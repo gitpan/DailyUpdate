@@ -2,11 +2,14 @@
 eval 'exec perl -S $0 "$@"'
   if $running_under_some_shell;
 
-$VERSION = 0.2;
+use strict;
+
+my $VERSION = 0.2;
 
 # Get some basic info
+my ($author,$email,$description,$url,$syntax);
 
-print "Name: ";
+print "Your Name: ";
 $author = <STDIN>;
 
 print "Email: ";
@@ -18,16 +21,16 @@ $description = <STDIN>;
 print "URL from which to grab data: ";
 $url = <STDIN>;
 
-print "Syntax (CTRL-D on blank line to end):\n<dailyupdate name=";
+print "Syntax (CTRL-D on blank line to end):\n<!--dailyupdate name=";
 $syntax = join '',<STDIN>;
 
-$syntax = "<dailyupdate name=$syntax";
+$syntax = "<!--dailyupdate name=$syntax";
 
 chomp ($author,$email,$description,$syntax,$url);
 
 $syntax =~ s/\n/\n#   /gs;
 
-($tag) = $syntax =~ /name=(\w+)/;
+my ($tag) = $syntax =~ /name=(\w+)/;
 
 
 # Now the tough part. We have to construct the Get, Filter, and Output
@@ -43,15 +46,17 @@ Choose an acquisition function:
     formatting.
 EOF
 
-$input = <STDIN>;
+my $input = <STDIN>;
 chomp $input;
 
+my $getFunction;
 $getFunction = '&GetUrl' if $input eq '1';
 $getFunction = '&GetText' if $input eq '2';
 $getFunction = '&GetHtml' if $input eq '3';
 $getFunction = '&GetImages' if $input eq '4';
 $getFunction = '&GetLinks' if $input eq '5';
 
+my $getCode;
 if ($input eq '1')
 {
   $getCode = '$data = GetUrl($url);\n';
@@ -82,18 +87,19 @@ robust with respect to changes in the format of a webpage.
 EOF
 
   print "Start pattern: ";
-  $startPattern = <STDIN>;
+  my $startPattern = <STDIN>;
   chomp $startPattern;
   $startPattern =~ s/'/\\'/;
 
   print "End pattern: ";
-  $endPattern = <STDIN>;
+  my $endPattern = <STDIN>;
   chomp $endPattern;
   $endPattern =~ s/'/\\'/;
 
   $getCode = "my \$data = $getFunction(\$url,'$startPattern','$endPattern');";
 }
 
+my ($printFunction,$outputCode);
 if ($input =~ /(4|5)/)
 {
   $printFunction = '&OutputListOrColumns';
@@ -212,8 +218,60 @@ function. Also, you might want to change the print function to modify the look
 of the output.
 
 To try it out, put it in your handlers directory (typically
-DailyUpdate/Handler/) and put <dailyupdate name=$tag>
+DailyUpdate/Handler/) and put <!--dailyupdate name=$tag-->
 in your input file.
 
 Have fun!
 EOF
+
+#-------------------------------------------------------------------------------
+
+=head1 NAME
+
+MakeHandler.pl - A generator for handlers suitable for use by Daily Update.
+
+=head1 DESCRIPTION
+
+I<MakeHandler.pl> is a handler generator. It asks the user a few questions,
+and then creates a handler.pm file, which can then be edited further. It
+jump-starts the handler writing process.
+
+Handlers are the extensible mechanism by which I<Daily Update> can be
+customized to acquire and display information from new data sources. Daily
+Update provides an API of useful functions that can be used by the handler
+writer.
+
+For more information and hints about writing handlers, see
+http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/writehandlers.html. Also
+see the API description in the documentation for DailyUpdate.pl.
+
+=head1 OPTIONS AND ARGUMENTS
+
+None.
+
+=head1 PREREQUISITES
+
+No additional Perl modules are needed.
+
+=head1 AUTHOR
+
+David Coppit, <coppit@cs.virginia.edu>,
+http://www.cs.virginia.edu/~dwc3q/index.html
+
+=begin CPAN
+
+=pod COREQUISITES
+
+none
+
+=pod OSNAMES
+
+any
+
+=pod SCRIPT CATEGORIES
+
+HTML/Preprocessors
+
+=end CPAN
+
+=cut

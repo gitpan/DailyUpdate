@@ -27,44 +27,44 @@ yourself.
 <h3>Associated Press News</h3>
 
 <p>
-  &lt;dailyupdate name=apnews style=twocolumn&gt;<br>
-  <dailyupdate name=apnews style=twocolumn>
+  &lt;!--dailyupdate name=apnews style=twocolumn--&gt;<br>
+  <!--dailyupdate name=apnews style=twocolumn-->
 </p>
 
 <h3>Yahoo Stock Market Indices</h3>
 
 <p>
-  &lt;dailyupdate name=yahoostockindices&gt;
-  <dailyupdate name=yahoostockindices>
+  &lt;!--dailyupdate name=yahoostockindices--&gt;
+  <!--dailyupdate name=yahoostockindices-->
 </p>
 
 <h3>Slashdot Headlines</h3>
 
 <p>
-  &lt;dailyupdate name=slashdot style=twocolumn&gt;
-  <dailyupdate name=slashdot style=twocolumn>
+  &lt;!--dailyupdate name=slashdot style=twocolumn--&gt;
+  <!--dailyupdate name=slashdot style=twocolumn-->
 </p>
 
 <h3>Dilbert Comic</h3>
 
 <p>
-  &lt;dailyupdate name=dilbert&gt;<br>
-  <dailyupdate name=dilbert>
+  &lt;!--dailyupdate name=dilbert--&gt;<br>
+  <!--dailyupdate name=dilbert-->
 </p>
 
 <h3>Freshmeat Headlines</h3>
 
 <p>
-  &lt;dailyupdate name=freshmeat&gt;<br>
-  <dailyupdate name=freshmeat>
+  &lt;!--dailyupdate name=freshmeat--&gt;<br>
+  <!--dailyupdate name=freshmeat-->
 </p>
 
 <h3>Charlottesville Weather</h3>
 
 <p>
-  &lt;dailyupdate name=weather
-  url="http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt"&gt;<br>
-  <dailyupdate name=weather url="http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt">
+  &lt;!--dailyupdate name=weather
+  url="http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt"--&gt;<br>
+  <!--dailyupdate name=weather url="http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt"-->
 </p>
 
 </body>

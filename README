@@ -1,4 +1,8 @@
-DailyUpdate version 5.1
+DailyUpdate version 6.01
+
+Written by David Coppit (coppit@cs.virginia.edu,
+  http://www.cs.virginia.edu/~dwc3q/index.html)
+
 
 DailyUpdate is an information integrator. It creates a custom web page from a
 template HTML file with special tags, replacing those tags with dynamic
@@ -6,46 +10,117 @@ information acquired from the internet.
 
 Send me email if you would like to be notified of updates.
 
-Please send me any modifications you make. (for the better, that is. :) Keep
-in mind that I'm likely to turn down obscure features to avoid including
-everything but the kitchen sink.
+Please send me any modifications you make to the main script. (for the better,
+that is. :) Keep in mind that I'm likely to turn down obscure features to
+avoid including everything but the kitchen sink. Check out the TODO file for
+ways you can help.
+
+If you make a nice web page using Daily Update and want to show it off, send
+me an email and I'll add it to the examples. Thanks!
+
+
+DOCUMENTATION
+
+Go to http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/index.html. Also try
+'perldoc DailyUpdate.pl'.
 
 
 CHANGES
 
-New in version 5.1: 
-- Update times are now set by the handlers by overriding GetUpdateTimes. (The
-  default is 2,5,8,11,14,17,20,23.) Users can also customize the update times
-  in the configuration file, if they don't like the ones given by the
-  handlers. Modified MakeHandler.pl to support this.
-- Fixed a caching bug that would cause (a) multiple copies of some data when a
-  tag is used more than once on the same page, and (b) reuse of cached data
-  even when the style has been changed.
-- Added -a flag for automatic download of handlers.
-- Added -n flag to check for new versions of handlers.
-- Fixed prerequisites.
-- Removed use of the deprecated HTML::Parse in AcquisitionFunctions.pm
+New in version 6.02:
+- Added return values for those of you who like to use makefiles to build web
+  pages.
+- Added documentation for MakeHandler.pl.
+- Bug fixed in output columns function. (Thanks to Craig Brockmeier
+  <craig@seurat.ppco.com> for finding it.)
+- I've revamped the configuration and install procedure to make it more
+  amenable to site-wide installation. DailyUpdate.cfg is looked for in
+  ~/.DailyUpdate, and handlers are installed in the first directory specified
+  by handlerlocations in DailyUpdate.cfg. (~/.DailyUpdate by default.) You'll
+  need to fix up your handlerLocations variable if you're upgrading from a
+  previous version. (Thanks to John Goerzen <jgoerzen@complete.org> for his
+  invaluable input.)
+- Added support for proxies requiring passwords. (Thanks to Kevin D.
+  Clark <kclark@cabletron.com>.)
+- Fixed a bug in HTMLTools.pm. (Thanks to Mark Harburn
+  <Mark.Harburn@durham.ac.uk>).
 
-New in version 5.0.2: 
-- Fixed data caching.
-- MakeHandler.pl now stores the URL in the comment block.
-- Created POD documentation in DailyUpdate.pl
-- Fixed a problem with the loading of configuration information
+New in version 6.01: 
+- Added -r switch to force proxies to reload cached data during data
+  acquisition. (Thanks to Gerhard Wiesinger <e9125884@student.tuwien.ac.at>)
+- Fixed a couple of minor bugs.
+- Improved installation to automatically set #! line and set INSTALLDIRECTORY
+  in DailyUpdate.pl.
+- Configuration doesn't have to be in the same directory as the DailyUpdate.pl
+  file. (You can leave the DailyUpdate.cfg file in the install directory, and
+  move the DailyUpdate.pl file wherever you want, like cgi-bin.)
+- During automatic installation, handlers are now put in the install
+  directory, not the directory of the currently running DailyUpdate.pl script.
 
 
 PREREQUISITES
 
 You will need Perl version 5.004 or newer. In addition, Daily Update uses the
-libwww library (LWP), URI, HTML-Tree, and HTML::Parser, all of which are
-available on CPAN at http://www.perl.com/CPAN/modules/by-module/.
+libwww library (LWP), URI (NOT URI::URL!), HTML-Tree, and HTML::Parser. You
+can download these packages with the following URLs:
+http://www.perl.com/CPAN/modules/by-module/LWP/libwww-perl-5.41.tar.gz
+http://www.perl.com/CPAN/modules/by-module/URI/URI-1.00.tar.gz
+http://www.perl.com/CPAN/modules/by-module/HTML/HTML-Tree-0.51.tar.gz
+http://www.perl.com/CPAN/modules/by-module/HTML/HTML-Parser-2.22.tar.gz
 
 
 INSTALLATION
 
-- Quick Start
+Installation is semi-interactive, and pretty much self-explanatory. I'm still
+ironing out the installation bugs, so please let me know if this can be
+improved.
 
-Run 'DailyUpdate.pl -n -a' from the command line. Look at the template.txt
-file and the output.html file. See
+DOS/Windows folks: you may have to use nmake or dmake instead of make. Also,
+PREFIX seems to be ignored in Windows. Sorry, but you'll have to do a
+system-wide install.
+
+- System-wide installation
+
+perl Makefile.PL
+make
+make install
+
+You may want to edit the sytem-wide DailyUpdate.cfg file in order to point
+handlerLocations to any system-supported handlers that all users can use.
+
+Users should copy DailyUpdate.cfg to ~/.DailyUpdate.cfg if they want to modify
+the configuration. (To set the input and output files, for example.
+
+- Single User installation (Doesn't work on DOS/Windows)
+
+perl Makefile.PL INSTALLDIRS=perl PREFIX=/path INSTALLMAN1DIR=/path/man/man1
+make
+make pure_perl_install DailyUpdate_Cleanup
+
+Add /path/lib/perl5 to your PERL5LIB environment variable, using something
+like:
+set PERL5LIB=$PERL5LIB:/path/lib/perl5;export PERL5LIB
+
+You'll have to manually move the man file from the install directory to your
+favorite man location, or set your MANPATH to include the install directory's
+man subdirectory.
+
+- General information
+
+Configuration information is first looked for in ~/.DailyUpdate, and
+then in the system-wide location specified during installation.
+
+The distribution comes with an example input file, template.txt, and a handler
+generator, MakeHandler.pl. (The latter is installed with DailyUpdate.pl.)
+
+If you have problems, see the FAQ at
+http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/faq.html
+
+
+RUNNING
+
+Run 'DailyUpdate.pl -na -i template.txt -o output.html' from the command line.
+Look at the template.txt file and the output.html file. See
 http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/handlers.html for more
 tags.
 
@@ -53,25 +128,8 @@ Since the example template isn't too exciting, you may want to take your
 normal homepage and jazz it up with the Daily Update tags. Change the inHtml
 and outHtml variables in the DailyUpdate.cfg file.
 
-Try 'pod2text DailyUpdate.pl' for documentation, or visit the web page at
+Try 'perldoc DailyUpdate.pl' for documentation, or visit the web page at
 http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/index.html.
-
-- Detailed Installation
-
-If you plan to run Daily Update from a cron job, you will probably have to use
-the #!/path/perl syntax for the first line of the DailyUpdate.pl file.
-
-Handlers are put in $INSTALL/DailyUpdate/Handler/. If you later move them to
-directory $SOMEWHERE/DailyUpdate/Handler/, add $SOMEWHERE to the
-handlerlocations variable in the configuration file. Similarly, if you move
-the DailyUpdate.pl and DailyUpdate.cfg files to another directory (like
-cgi-bin), be sure to update the handlerlocations variable.
-
-
-DOCUMENTATION
-
-Go to http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/index.html. Also try
-'pod2text DailyUpdate.pl'.
 
 
 SUPPORT

@@ -12,7 +12,7 @@ use DailyUpdate::AcquisitionFunctions qw( GetUrl );
 
 use vars qw( $VERSION );
 
-$VERSION = 0.2;
+$VERSION = 0.3;
 
 # DEBUG for this package is the same as the main.
 use constant DEBUG => main::DEBUG;
@@ -50,13 +50,12 @@ sub _GetHandlerCode
   if (!defined $data)
   {
     print STDERR "Couldn't download handler.\n";
-    return;
+    return 'Tag Not found';
   }
 
   if ($$data =~ /^Tag not found/)
   {
     print STDERR "Server reports that there is no such handler.\n";
-    return;
   }
 
   return $$data;
@@ -71,7 +70,7 @@ sub _DownloadHandler
 
   my $directory;
   $directory = $INC{"DailyUpdate/Handler/$handlerName.pm"} ||
-    "$main::config{handlerlocations}->[0]/DailyUpdate/Handler";
+    "$main::config{handlerlocations}[0]/DailyUpdate/Handler";
 
   mkpath $directory unless -e $directory;
   unlink "$directory/$handlerName.pm" if -e "$directory/handlerName.pm";
@@ -177,7 +176,7 @@ sub Create
   {
     if (&_HandlerOutdated($handlerName))
     {
-      print STDERR "\n\nThere is a newer version of handler '$handlerName',";
+      print STDERR "\nThere is a newer version of handler '$handlerName',";
       print STDERR " or it is not installed locally.\n";
       $needDownload = 1;
     }
@@ -192,7 +191,7 @@ sub Create
     eval "require DailyUpdate::Handler::$handlerName";
     if ($@ =~ /Can't locate DailyUpdate.Handler.$handlerName/)
     {
-      print STDERR "\n\nCan not find handler '$handlerName'\n";
+      print STDERR "\nCan not find handler '$handlerName'\n";
       $needDownload = 1;
     }
     else

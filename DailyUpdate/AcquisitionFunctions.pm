@@ -5,8 +5,8 @@ package DailyUpdate::AcquisitionFunctions;
 # internet. It is used by the handlers' Get functions.
 
 use strict;
-# Used to make relative URLs absolute
-use URI;
+# For some HTML manipulation functions
+use DailyUpdate::HTMLTools;
 # For UserAgent
 use LWP::UserAgent;
 # For exporting of functions
@@ -15,69 +15,12 @@ use Exporter;
 use vars qw( @ISA @EXPORT_OK $VERSION );
 
 @ISA = qw( Exporter );
-@EXPORT_OK = qw( MakeLinksAbsolute GetUrl GetHtml GetImages GetLinks GetText );
+@EXPORT_OK = qw( GetUrl GetHtml GetImages GetLinks GetText);
 
-$VERSION = 0.2;
+$VERSION = 0.4;
 
 # DEBUG for this package is the same as the main.
 use constant DEBUG => main::DEBUG;
-
-# ------------------------------------------------------------------------------
-
-# Extracts all text between the starting and ending patterns. '^' and '$' can
-# be used for the starting and ending patterns to signify start of text and
-# end of text.
-sub ExtractText
-{
-  my $html = shift;
-  my $startPattern = shift;
-  my $endPattern = shift;
-
-  if (($startPattern ne '^') && ($endPattern ne '$'))
-  {
-    $html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s;
-    $html = '' unless defined $1;
-  }
-  if (($startPattern ne '^') && ($endPattern eq '$'))
-  {
-    $html =~ s/.*?$startPattern(.*)/$1/s;
-    $html = '' unless defined $1;
-  }
-  if (($startPattern eq '^') && ($endPattern ne '$'))
-  {
-    $html =~ s/(.*?)$endPattern.*/$1/s;
-    $html = '' unless defined $1;
-  }
-
-  return $html;
-}
-
-# ------------------------------------------------------------------------------
-
-# Searches text for "a href" or "img src" tags and makes them absolute
-sub MakeLinksAbsolute
-{
-  my $url = shift;
-  my $text = shift;
-
-  # First do the ones with quotes, like <a href="X">.
-  # It has to start with either <a or <img, then there has to be an href or src
-  # followed by whitespace, then an =, some whitespace, and then a ".
-  $text =~ s/(<(?:a|img) [^>]*(?:href|src)\s*=\s*")([^">]+)("[^>]*>)/sprintf("$1%s$3",URI->new($2)->abs($url))/egi;
-
-  # Now do the ones with quotes, like <a href='X'>.
-  # It has to start with either <a or <img, then there has to be an href or src
-  # followed by whitespace, then an =, some whitespace, and then a '.
-  $text =~ s/(<(?:a|img) [^>]*(?:href|src)\s*=\s*')([^'>]+)('[^>]*>)/sprintf("$1%s$3",URI->new($2)->abs($url))/egi;
-
-  # Now do the ones without quotes, like <a href=X>.
-  # It has to start with either <a or <img, then there has to be an href or src
-  # followed by whitespace, then an =, some whitespace, the value, and then a
-  # space.
-  $text =~ s/(<(?:a|img) [^>]*(?:href|src)\s*=\s*)([^"][^ >]+)( [^>]*>)/sprintf("$1%s$3",URI->new($2)->abs($url))/egi;
-
-  return $text;
-}
 
 # ------------------------------------------------------------------------------
 
@@ -98,10 +41,20 @@ sub GetUrl
   else
   {
     my $userAgent = new LWP::UserAgent;
+
     $userAgent->timeout($main::config{socketTimeout});
     $userAgent->proxy(['http', 'ftp'], $main::config{proxy})
       if $main::config{proxy} ne '';
     my $request = new HTTP::Request GET => "$url";
+    # Reload content if the user wants it
+    $request->push_header("Pragma" => "no-cache") if exists $main::opts{r};
+
+    if ($main::config{proxy_username} ne '')
+    {
+      $request->proxy_authorization_basic($main::config{proxy_username},
+                       $main::config{proxy_password});
+    }
+
     my $result = $userAgent->request($request);
 
     if (!$result->is_success)
@@ -113,6 +66,10 @@ sub GetUrl
     }
 
     my $content = $result->content;
+
+    # Strip linefeeds off the lines
+    $content =~ s/\r//gs;
+
     return \$content;
   }
 }
@@ -120,7 +77,7 @@ sub GetUrl
 # ------------------------------------------------------------------------------
 
 # Gets all the text from a URL, stripping out all HTML tags between the
-# starting pattern and the ending pattern.
+# starting pattern and the ending pattern. This function escapes & < >.
 sub GetText
 {
   my ($url,$startPattern,$endPattern) = @_;
@@ -144,6 +101,11 @@ sub GetText
   my $f = HTML::FormatText->new(leftmargin=>0);
   $html = $f->format(HTML::TreeBuilder->new->parse($html));
   $html =~ s/\n*$//sg;
+
+  # Escape HTML characters
+  $html =~ s/&/&amp;/sg;
+  $html =~ s/</&lt;/sg;
+  $html =~ s/>/&gt;/sg;
 
   if ($html ne '')
   {
@@ -256,7 +218,7 @@ sub GetLinks
     my $link = $1;
 
     # Remove any formatting
-    $link =~ s/< *\/?\b(font|li|b|br|h[1-9])\b[^>]*>//sig;
+    $link = StripTags($link);
 
     # change relative tags to absolute
     $link = &MakeLinksAbsolute($url,$link);

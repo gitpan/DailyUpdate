@@ -1,18 +1,22 @@
-DailyUpdate.pl                    The main script
-DailyUpdate.cfg                   A sample configuration file
-template.txt                      A sample input file
-MakeHandler.pl                    A utility to ease the creation of handlers
-README                            Notes about Daily Update
-DESIGN                            Documentation of Daily Update's architecture
-MANIFEST                          This file
-TODO                              Planned changes to Daily Update
-
-DailyUpdate/AcquisitionFunctions.pm  An API of functions for handler developers
-DailyUpdate/Handler.pm               The base class for all handlers
-DailyUpdate/HandlerFactory.pm        A class that encapsulates the locating
-                                       of handlers
-DailyUpdate/OutputFunctions.pm       An API of functions for handler developers
-DailyUpdate/Parser.pm                The parser for input files
-
-DailyUpdate/Handler/                 The directory in which handlers are
-                                       installed
+DailyUpdate.pl                        The main script
+MakeHandler.pl                        A utility to help users make new
+                                        handlers
+Makefile.PL                           The makefile script for installation
+DailyUpdate.cfg                       A sample configuration file
+template.txt                          A sample template file
+README                                Read this first
+MANIFEST                              This file
+DESIGN                                Documentation for the script's design
+TODO                                  Planned enhancements/wish list
+DailyUpdate/AcquisitionFunctions.pm   A module containing data gathering
+                                        functions, used by handlers.
+DailyUpdate/Handler.pm                The base class for all handlers.
+DailyUpdate/HTMLTools.pm              A module containing useful HTML
+                                        manipulation routines.
+DailyUpdate/HandlerFactory.pm         Encapsulates the task of locating,
+                                        locally or remotely, a handler for a
+                                        Daily Update tag.
+DailyUpdate/OutputFunctions.pm        A module containing useful output
+                                        functions, used by handlers.
+DailyUpdate/Parser.pm                 Daily Update's parser for
+                                        <!--dailyupdate...--> tags

@@ -19,6 +19,7 @@ use vars qw( $VERSION );
 
 $VERSION = 0.2;
 
+my $outputFile;
 my $oldHtml = undef;
 
 # DEBUG for this package is the same as the main.
@@ -38,6 +39,7 @@ sub new
   my $self = {};
 
   # Store a reference to the class data;
+  $self->{"_OUTPUTFILE"} = \$outputFile;
   $self->{"_OLDHTML"} = \$oldHtml;
 
   # Set the default update times
@@ -88,14 +90,19 @@ sub CachedDataUsable
   my $currentTime = time;
   my ($hour,$day,$month,$year,$wday) = (localtime($currentTime))[2..6];
 
+  # Make a local copy of the output file
+  my $outputFile = ${$self->{"_OUTPUTFILE"}};
+
   # If there's no old data file, we have to generate the data.
-  print "<!--DEBUG:  Old output file doesn't exist.-->\n"
-    if (DEBUG && !-e $main::config{outHtml});
-  return 0 unless -e $main::config{outHtml};
+  print "<!--DEBUG:  Old output file '$outputFile' doesn't exist.-->\n"
+    if (DEBUG && !-e $outputFile);
+  return 0 unless -e $outputFile;
 
   if (!defined ${$self->{"_OLDHTML"}})
   {
-    open (OLDHTML,$main::config{outHtml}) or die "Can't open output file!\n";
+    print "<!--DEBUG:  Reading old data file $outputFile.-->\n"
+      if DEBUG;
+    open (OLDHTML,$outputFile) or die "Can't open output file!\n";
     ${$self->{"_OLDHTML"}} = join "",<OLDHTML>;
     close (OLDHTML);
   }
@@ -200,7 +207,9 @@ sub Handle
   # Get the data
   my $grabbedData = $self->Get($attributes);
 
-  if (!defined $grabbedData)
+  if ((!defined $grabbedData)||
+      ((ref($grabbedData) eq "ARRAY") && (!defined @$grabbedData)) ||
+      ((ref($grabbedData) eq "SCALAR") && (!defined $$grabbedData)))
   {
     print "Couldn't get data -- acquisition function failed.\n";
     $self->PrintCachedData();
@@ -218,7 +227,9 @@ sub Handle
   # Filter the data
   $grabbedData = $self->Filter($attributes,$grabbedData);
 
-  if (!defined $grabbedData)
+  if ((!defined $grabbedData)||
+      ((ref($grabbedData) eq "ARRAY") && (!defined @$grabbedData)) ||
+      ((ref($grabbedData) eq "SCALAR") && (!defined $$grabbedData)))
   {
     # Don't change "Couldn't". It's used by CachedDataUsable
     print "Couldn't update information (filter removed everything).\n";
@@ -287,6 +298,19 @@ sub GetUpdateTimes
   my $self = shift;
 
   return $self->{UPDATETIMES};
+}
+
+# ------------------------------------------------------------------------------
+
+# This function is used by DailyUpdate.pl to tell this class which output
+# file is currently being used.
+sub _SetOutputFile
+{
+  $outputFile = shift;
+  $oldHtml = undef;
+
+  print "<!--DEBUG: Setting output file in handler to $outputFile.-->\n"
+    if DEBUG;
 }
 
 # ------------------------------------------------------------------------------

@@ -1,29 +1,14 @@
-#!/usr/bin/perl
+#!/usr/cs/bin/perl
 # use perl                                  -*- mode: Perl; -*-
 eval 'exec perl -S $0 "$@"'
   if $running_under_some_shell;
 
 use vars qw($running_under_some_shell);         # no whining!
 
-# Daily Update, Version 5.1
-
-# Daily Update grabs dynamic information from the internet and integrates it
-# into your webpage. Features:
-# - Timeouts to handle dead servers without hanging the script (Script timer
-#   doesn't work on Windows platforms since they don't have fork().)
-# - User-defined update times to prevent hammering of sites
-# - Plugin architecture for handlers allows easy extension (I've gone OO)
-# - Compatible with cgi-wrap (if you want to call it on-the-fly)
-# - Automatic download of missing handlers from the Daily Update homepage
-
-# For documentation, go to
+# For documentation, do "perldoc DailyUpdate.pl". Also visit
 #   http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/index.html.
 # For documentation on how to write handlers, go to
 #   http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/handlers.html
-
-# This code uses the libwww library (LWP), URI, HTML-Tree, and HTML::Parser,
-# all of which are available on CPAN at
-# http://www.perl.com/CPAN/modules/by-module/.
 
 # I suggest using wwwis by Alex Knowles if your html file contains a lot of
 # images, which can slow down viewing time on browsers. His script, at
@@ -48,6 +33,32 @@ use vars qw($running_under_some_shell);         # no whining!
 
 # Version History (major changes only)
 
+# 6.02 Added support for proxies requiring passwords. (Thanks to Kevin D.
+#      Clark <kclark@cabletron.com>.) Fixed a bug in HTMLTools.pm. (Thanks to
+#      Mark Harburn <Mark.Harburn@durham.ac.uk>). Improved site-wide
+#      installation. (Thanks to John Goerzen <jgoerzen@complete.org>.) Fixed a
+#      bug in output columns (Thanks to Craig Brockmeier
+#      <craig@seurat.ppco.com> for finding it.)
+# 6.01 Added -r switch to force proxies to reload cached data (thanks to
+#      Gerhard Wiesinger <e9125884@student.tuwien.ac.at>). Improved
+#      installation. Fixed a couple of minor bugs. Config file can now be
+#      left in installation directory, and the handlers are installed in the
+#      installation directory.
+# 6.00 Now the installation mimicks the usual "perl Makefile.PL;make;make
+#       install" of perl modules.
+#      The script now supports multiple input and output files in the
+#       configuration file.
+#      Changed the syntax from <dailyupdate...> to <!--dailyupdate...--> so 
+#       that WYSIWYG editors won't croak on the 'unknown' tag.
+#      Moved HTML-related functionality from AcquisitionFunctions.pm to
+#       HTMLTools.pm, and added function StripTags.
+#      Fixed 2 bugs in MakeLinksAbsolute. (Thanks to Kazuo Moriwaka
+#       <kankun@osa.att.ne.jp> and Phillip Gersekowski
+#       <philg@toonews.c-link.com.au>)
+#      Enhanced Handler to work better in the face of bad data acquisition and
+#       filtering.
+#      Added OutputList to OutputFunctions.pm, which allows you to set the
+#       format and number of columns when printing out lists.
 # 5.1 Update times are now set by the handlers by overriding GetUpdateTimes.
 #     (The default is 2,5,8,11,14,17,20,23.) Users can still customize the
 #     update times in the configuration file. Modified MakeHandler.pl to
@@ -75,28 +86,32 @@ use strict;
 # it dumps to screen).
 use constant DEBUG => 0;
 
+# SYSCONFIGDIR is where system-wide configuration is stored. It is set
+# during installation. If no user-specific configuration is found, this
+# configuration information is used.
+use constant SYSCONFIGDIR => "/usr/cs/etc";
+
 # Need to use this to get the current directory so DailyUpdate.cfg will be
 # found when run as a cron job.
 use Getopt::Std;
-# Used to get the directory of the script, so we can find the configuration
-# file.
-use FindBin;
 
 use vars qw( $VERSION );
-$VERSION = '5.1';
+
+$VERSION = do { my @r = (q$Revision: 6.2 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 # ------------------------------------------------------------------------------
 
 sub usage
 {
 <<EOF;
-usage: DailyUpdate.pl [-an] [-i inputfile] [-o outputfile] [-c configfile]
+usage: DailyUpdate.pl [-anr] [-i inputfile] [-o outputfile] [-c configfile]
 
 -i The template file to use as input (overrides value in configuration file)
 -o The output file (overrides value in configuration file)
 -c The configuration file to use
 -a Automatically download handlers as needed
 -n Check for new versions of the handlers
+-r Forces caching proxies to reload data
 EOF
 }
 
@@ -112,13 +127,18 @@ BEGIN
     print "<!--DEBUG:   $0 @ARGV-->\n";
   }
 
+  # Here $ENV{HOME} is set during installation on DOS/Windows systems.
+  # $ENV{HOME} = '';
+
   # See if the user specified the input and output files on the command line.
   getopt('ioc',\%opts);
 
-  print usage and exit if $opts{h};
+  print usage and exit(0) if $opts{h};
 
-  # Make sure the directory of the script is on INC
-  unshift @INC,$FindBin::Bin;
+  # Make sure the system-wide configuration directory and the user's directory
+  # are on INC
+  unshift @INC,SYSCONFIGDIR;
+  unshift @INC,"$ENV{HOME}/.DailyUpdate";
 
   if (defined $opts{c})
   {
@@ -129,19 +149,63 @@ BEGIN
     require 'DailyUpdate.cfg';
   }
 
-  # Take off script directory, because we want to put the handlerlocations
-  # after it.
+  # Take off the system directory now that configuration is loaded
+  shift @INC;
   shift @INC;
 
-  # Put the directory of the script on the include search path
-  unshift (@{$config{handlerlocations}},$FindBin::Bin);
+  die "\"handlerlocations\" in DailyUpdate.cfg must be non-empty.\n"
+    if $#{$config{handlerlocations}} == -1;
 
+  # Put the handler locations on the include search path
   unshift @INC,@{$config{handlerlocations}};
 
-  # Override both the config and the debug values if the user specified inHtml
-  # or outHtml
-  $config{inHtml} = $opts{i} if defined $opts{i};
-  $config{outHtml} = $opts{o} if defined $opts{o};
+  # Override the config values if the user specified -i or -o
+  $config{inputFiles} = ["$opts{i}"] if defined $opts{i};
+  $config{outputFiles} = ["$opts{o}"] if defined $opts{o};
+
+  # Handle the proxy password, if a username was given but not a password, and
+  # a tty is available.
+  if (($config{proxy_username} ne '') &&
+      (($config{proxy_password} eq '') && (-t)))
+  {
+    unless (eval "require Term::ReadKey")
+    {
+      print "You need Term::ReadKey for password authorization. ";
+      print "Get it from CPAN.\n";
+      exit(1);
+    }
+    require FileHandle;
+
+    # Make unbuffered
+    my $oldBuffer = $|;
+    $|=1;
+
+    print "Please enter your proxy password: ";
+    my $DEV_TTY = new FileHandle;
+    open($DEV_TTY,"</dev/tty") || die "Unable to open /dev/tty: $!\n";
+
+    # Temporarily disable strict subs so this will compile even though we
+    # haven't require'd Term::ReadKey yet.
+    no strict "subs";
+
+    # Turn off echo to read in password
+    Term::ReadKey::ReadMode (2, $DEV_TTY);
+    $config{proxy_password} = Term::ReadKey::ReadLine (0, $DEV_TTY);
+
+    # Turn echo back on
+    Term::ReadKey::ReadMode (0, $DEV_TTY);
+
+    # Restore strict subs
+    use strict "subs";
+
+    # Give the user a visual cue that their password has been entered
+    print "\n";
+
+    chomp($config{proxy_password});
+    close($DEV_TTY) || warn "Unable to close /dev/tty: $!\n";
+    $| = $oldBuffer;
+  }
+
 
   if (DEBUG)
   {
@@ -162,7 +226,7 @@ BEGIN
 #------------------------------------------------------------------------------
 
 # Disable the timers if in debug mode or on the (broken) Windows platform
-if ((!DEBUG) && ($^O ne 'MSWin32'))
+if ((!DEBUG) && ($^O ne 'MSWin32') && ($^O ne 'dos'))
 {
   if ((my $scriptpid = fork) != 0) 
   {
@@ -180,53 +244,78 @@ if ((!DEBUG) && ($^O ne 'MSWin32'))
       sleep $config{scriptTimeout};
       kill 9,$scriptpid;
     }
-    exit (1);
+    exit(1);
   }
 }
 
 # Make unbuffered for easier debugging.
 $| = 1 if (DEBUG);
 
-# Store the old STDOUT so we can replace it later.
-open (OLDOUT, ">&STDOUT") unless (DEBUG);
-
-# Redirect STDOUT to a temp file.
-open (STDOUT,">$config{outHtml}.temp") unless (DEBUG);
-
-require DailyUpdate::Parser;
-
-# Okay, now do the magic. Parse the input file, calling the handlers whenever
-# a special tag is seen.
-my $p = new DailyUpdate::Parser;
-$p->parse_file($config{inHtml});
-
-# Restore STDOUT to the way it was
-if (!DEBUG)
+# Check that the input files and output files match
+if ($#{$config{inputFiles}} != $#{$config{outputFiles}})
 {
-  close (STDOUT);
-  open(STDOUT, ">&OLDOUT") or die "Can't restore STDOUT.\n";
+  print "Your input and output files are not correctly specified.\n";
+  die "Check your configuration.\n";
+}
 
-  # Replace the output file with the temp file.
-  unlink $config{outHtml};
-  rename ("$config{outHtml}.temp",$config{outHtml});
-  chmod 0755, $config{outHtml};
+die "No input and output files\n" if $#{$config{inputFiles}} == -1;
 
-  # Check to see if we were invoked as a cgi script
-  my $scriptname;
-  $scriptname = $ENV{'SCRIPT_NAME'} or $scriptname = '';
-  if ($scriptname)
+for (my $i=0;$i <= $#{$config{inputFiles}};$i++)
+{
+  print "<!--DEBUG: Now processing $config{inputFiles}[$i] => $config{outputFiles}[$i]. -->\n" if DEBUG;
+
+  # Store the old STDOUT so we can replace it later.
+  open (OLDOUT, ">&STDOUT") unless (DEBUG);
+
+  # Redirect STDOUT to a temp file.
+  open (STDOUT,">$config{outputFiles}[$i].temp") unless (DEBUG);
+
+  # Tell the Handler class that there's a new output file.
+  require DailyUpdate::Handler;
+  &DailyUpdate::Handler::_SetOutputFile($config{outputFiles}[$i]);
+
+  require DailyUpdate::Parser;
+
+  # Okay, now do the magic. Parse the input file, calling the handlers whenever
+  # a special tag is seen.
+
+  my $p = new DailyUpdate::Parser;
+  $p->parse_file($config{inputFiles}[$i]);
+
+  # Restore STDOUT to the way it was
+  if (!DEBUG)
   {
-    # Now print the results because Daily Update was invoked as some sort of
-    # cgi.
-    print "Content-type: text/html\n\n";
+    close (STDOUT);
+    open(STDOUT, ">&OLDOUT") or die "Can't restore STDOUT.\n";
 
-    open (INFILE, $config{outHtml});
-    while (defined(my $line = <INFILE>)) {
-      print $line;
+    # Replace the output file with the temp file.
+    unlink $config{outputFiles};
+    rename ("$config{outputFiles}[$i].temp",$config{outputFiles}[$i]);
+    chmod 0755, $config{outputFiles};
+
+    # Check to see if we were invoked as a cgi script
+    my $scriptname;
+    $scriptname = $ENV{'SCRIPT_NAME'} or $scriptname = '';
+    if ($scriptname)
+    {
+      # Now print the results because Daily Update was invoked as some sort of
+      # cgi.
+      print "Content-type: text/html\n\n";
+
+      open (INFILE, $config{outputFiles}[$i]);
+      while (defined(my $line = <INFILE>)) {
+        print $line;
+      }
+      close INFILE;
+
+      # If we're invoked as a CGI script, we just do the first file in the
+      # configuration. (I guess...)
+      last;
     }
-    close INFILE;
   }
 }
+
+exit(0);
 
 #-------------------------------------------------------------------------------
 
@@ -236,7 +325,7 @@ Daily Update - downloads and integrates dynamic information into your webpage
 
 =head1 SYNOPSIS
 
-DailyUpdate.pl [-i inputfile] [-o outputfile] [-c configfile]
+DailyUpdate.pl [B<-anr>] [B<-i> inputfile] [B<-o> outputfile] [B<-c> configfile]
 
 =head1 DESCRIPTION
 
@@ -245,12 +334,12 @@ into your webpage. Features include modular extensibility, timeouts to handle
 dead servers without hanging the script, user-defined update times, automatic
 installation of modules, and compatibility with cgi-wrap. 
 
-Daily Update takes an input HTML file, which includes special tags of the
-form \<dailyupdate name=X\>. I<X> represents a data source, such as "apnews",
-"weather", etc. When such a tag is encountered, Daily Update attempts to
-load and execute the handler to acquire the data, replacing the tag with the
-data. If the handler can not be found, the script asks for permission to
-attempt to download it from the central repository at
+Daily Update takes an input HTML file, which includes special tags of the form
+<!--dailyupdate name=X-->. I<X> represents a data source, such as "apnews",
+"weather", etc. When such a tag is encountered, Daily Update attempts to load
+and execute the handler to acquire the data, replacing the tag with the data.
+If the handler can not be found, the script asks for permission to attempt to
+download it from the central repository at
 http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/handlers.html.
 
 The output contains comment tags with timestamps, which are used by the script
@@ -264,9 +353,9 @@ Daily Update has a modular architecture, in which I<handlers> implement the
 acquisition and output of data gathered from the internet. To use new data
 sources, first locate an interesting one at
 http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/handlers.html, then place
-the tag \<dailyupdate name=NAME\> in your input file. Then run Daily Update
-once manually, and it will prompt you for permission to download and install
-the handler.
+the tag <!--dailyupdate name=NAME--> in your input file. Then run Daily
+Update once manually, and it will prompt you for permission to download and
+install the handler.
 
 To help handler developers, a utility called I<MakeHandler.pl> is included with
 the Daily Update distribution. It is a generator that asks several questions,
@@ -303,6 +392,11 @@ GetLinks: Grabs hyperlinks from a block of HTML
 OutputFunctions consists of:
 
 =over 2
+
+=item *
+
+OutputList: takes a reference to an array, a style (ul, ol, free text), and an
+integer representing the number of columns.
 
 =item *
 
@@ -348,7 +442,56 @@ Automatically download all handlers that are not installed locally.
 
 Check for new versions of handlers while processing input file.
 
+=item B<-r>
+
+Reload the content from the proxy server even on a cache hit. This prevents
+Daily Update from using stale data when constructing the output file.
+
 =back
+
+=head1 Configuration
+
+The file DailyUpdate.cfg contains the configuration. Daily Update will first
+look for this file in ~/.DailyUpdate, and then in the system-wide location
+specified during installation. If both of these fail, it will search the
+standard Perl library path. In this file you can specify the following:
+
+=over 2
+
+=item *
+
+Multiple input and output files.
+
+=item *
+
+The timeout value for the script. This puts a limit on the total time the
+script can execute, which prevents it from hanging.
+
+=item *
+
+The timeout value for socket connections. This allows the script to recover
+from unresponsive servers.
+
+=item *
+
+Your proxy host. For example, "http://proxy.host.com:8080/"
+
+=item *
+
+The locations of handlers. For example, ['dir1','dir2'] would look for handlers
+in dir1/DailyUpdate/Handler/ and dir2/DailyUpdate/Handler/. Note that while
+installing handlers, the first directory is used.
+
+=item *
+
+Custom times at which to update the data for each handler. Handlers typically
+update their data at set times, but this can be customized in the
+configuration.
+
+=back
+
+See the file DailyUpdate.cfg for examples.
+
 
 =head1 RUNNING
 
@@ -385,7 +528,7 @@ Handlers that you download may require additional modules.
 =head1 AUTHOR
 
 David Coppit, <coppit@cs.virginia.edu>,
-http://www.cs.virginia.edu/~dwc3q/index.thml
+http://www.cs.virginia.edu/~dwc3q/index.html
 
 =begin CPAN
 
