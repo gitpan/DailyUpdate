@@ -62,6 +62,30 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
+# <betanews style=X> Betanews headlines. Styles:
+#   unorderedlist = Bulletted list (default)
+#   twocolumn = Two column table
+"betanews" =>
+[
+  \&HandleGeneric,
+  [2,5,8,11,14,17,20,23],
+  "http://www.betanews.com/main.txt",
+  "Betanews",
+  '&GetHtml($url,"(?i)main news","\$")',
+  # Split the webpage up along the <line>s. Drop the text returned by GetHtml.
+  # Create a link from the line containing the <bold>, and the link on the last
+  # line.
+  'my @headlines = split /<line>\n/,$grabbedData[0];
+  shift @grabbedData;
+  foreach my $headline (@headlines)
+  {
+    $headline =~ s/<bold>([^<]+)<.*\n[^\n]+<a href="((?!mailto).*?)"/push @grabbedData,"<a href=\"$2\">$1<\/a>"/seg;
+  }',
+  '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+],
+
+#-------------------------------------------------------------------------------
+
 # <apnews style=X> AP News from Yahoo. Styles:
 #   unorderedlist = Bulletted list (default)
 #   twocolumn = Two column table
@@ -92,7 +116,8 @@ $socketTimeout = 60;
   # see them, push a <a href> onto @grabbedData. shift the original text
   # from GetText off of @grabbedData. Output the list or columns based on
   # the style.
-  '$grabbedData[0] =~ s/\%\%\n(.*?)\n(.*?)\n/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData',
+  '$grabbedData[0] =~ s/\%\%\n(.*?)\n(.*?)\n/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;
+  shift @grabbedData',
   '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
 ],
 
@@ -113,7 +138,8 @@ $socketTimeout = 60;
   # see them, push a <a href> onto @grabbedData. shift the original text
   # from GetText off of @grabbedData. Output the list or columns based on
   # the style.
-  '$grabbedData[0] =~ s/([^\n]+)\n[^\n]+\n([^\n]+)/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData',
+  '$grabbedData[0] =~ s/([^\n]+)\n[^\n]+\n([^\n]+)/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;
+  shift @grabbedData',
   '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
 ],
 
@@ -294,6 +320,41 @@ adam =>
   "Adam\@Home",
   '&GetLinks($url,"ENDxx>","</TABLE")',
   '',
+  'print "  $grabbedData[0]\n"',
+],
+
+#-------------------------------------------------------------------------------
+
+# <yahoostockindices> Yahoo composite indices
+yahoostockindices =>
+[
+  \&HandleGeneric,
+  [7],
+  "http://quote.yahoo.com/",
+  "Yahoo Stock Indices",
+  '&GetHtml($url,"\n<p>","\n<p>")',
+  '',
+  'print "  $grabbedData[0]\n"',
+],
+
+#-------------------------------------------------------------------------------
+
+# <yahoostockquote> Quote for a stock
+yahoostockquote =>
+[
+  \&HandleGeneric,
+  ["always"],
+  "http://quote.yahoo.com/",
+  "Yahoo Stock Indices",
+  '&GetHtml($url."q?s=$attributes->{stock}&d=v1","\n<p>(?!<)","\n<p>\n")',
+  'if ($attributes->{style} =~ /short/i)
+  {
+    $grabbedData[0] =~ s/.*?(<a href.*?<\/a>).*?<b>(.*?)<\/b>.*/$1 $2/si;
+  }
+  elsif ($attributes->{style} !~ /(short|tablular)/i)
+  {
+    print "WARNING: Unknown style for yahoostockquote.<br>\n";
+  }',
   'print "  $grabbedData[0]\n"',
 ],
 

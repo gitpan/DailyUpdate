@@ -4,7 +4,7 @@ eval 'exec perl -S $0 "$@"'
 
 use vars qw($running_under_some_shell);         # no whining!
 
-# Daily Update, Version 4.4
+# Daily Update, Version 4.5
 
 # DailyUpdate grabs dynamic information from the internet and integrates it
 # into your webpage. Features:
@@ -57,6 +57,10 @@ use vars qw($running_under_some_shell);         # no whining!
 
 # Version History (major changes only)
 
+# 4.5 Added acquisition function GetHtml. Added -i and -o flags
+#     for input and output files. Now reads old html file only once (faster).
+#     Added "always" schema time option. Now checks script directory for
+#     configuration file. Miscellaneous bug fixes and minor enhancements.
 # 4.4 Separated configuration from main script (yea!). Fixed "uninitialized
 #     variable" warnings. Created user-submitted schemas webpage at
 #     http://www.cs.virginia.edu/~dwc3q/code/schemas.html. Added more data
@@ -90,11 +94,20 @@ use URI::URL;
 
 package Main;
 
+# Need to use this to get the current directory so DailyUpdate_config will be
+# found when run as a cron job.
+use Getopt::Std;
+# Used to get the directory of the script, so we can find the configuration
+# file.
+use FindBin;
+
 # Debug mode: doesn't put a time limit on the script, outputs some
 # <!--DEBUG:...--> commentary, and doesn't write to the output file (instead
 # it dumps to screen).
 use constant DEBUG => 0;
 
+# Put the directory of the script on the include search path;
+push @INC,$FindBin::Bin;
 require "DailyUpdate_config";
 
 use vars qw( *OLDOUT $proxy $inHtml $outHtml $scriptTimeout );
@@ -128,11 +141,20 @@ use constant DEBUG => Main::DEBUG;
 # or the information couldn't be gotten on the last attempt, the function
 # returns 1.  Otherwise, it outputs the old information and returns 0.
 # Parameters: (Comment string, update times)
+
+# Create a "static" variable
+{
+my $oldHtml = "Uninitialized";
+
 sub CachedDataUsable
 {
 my ($tagName, @updateTimes) = @_;
 
 print "<!--DEBUG: CachedDataUsable: checking $tagName-->\n" if (DEBUG);
+
+# If the user specified "always", there's no need to check the time.
+print "<!--DEBUG:  \"Always\" specified. Skipping cache check.-->\n" if (DEBUG && $updateTimes[0] =~ /always/i);
+return 0 if ($updateTimes[0] =~ /always/i);
 
 my $currentTime = time;
 my ($hour,$day,$month,$year,$wday) = (localtime($currentTime))[2..6];
@@ -141,9 +163,12 @@ my ($hour,$day,$month,$year,$wday) = (localtime($currentTime))[2..6];
 print "<!--DEBUG:  Old output file doesn't exist.-->\n" if (DEBUG && !-e $Main::outHtml);
 return 0 if (!-e $Main::outHtml);
 
-open (OLDHTML,$Main::outHtml) or die "Can't open output file!\n";
-my $oldHtml = join "",<OLDHTML>;
-close (OLDHTML);
+if ($oldHtml eq "Uninitialized")
+{
+  open (OLDHTML,$Main::outHtml) or die "Can't open output file!\n";
+  $oldHtml = join "",<OLDHTML>;
+  close (OLDHTML);
+}
 
 my $lastUpdated;
 
@@ -186,25 +211,37 @@ print "$oldData\n";
 
 return 1;
 }
+}
 
 # ------------------------------------------------------------------------------
 
-# Extracts any normal text from the html at url, between startPattern and
-# endPattern. Removes beginning and ending newlines, and collapses multiple
-# blank lines between paragraphs into a single blank line.
-
-# This function returns a list to be compatible with GetLinks in the context
-# of HandleGeneric. startPattern and endPattern can be "^" or "\$" to match
-# the beginning of the file or the end of the file.
-sub GetText
+sub GetUrl
 {
-my ($url,$startPattern,$endPattern) = @_;
+my $url = shift;
 
 my $userAgent = new LWP::UserAgent;
 $userAgent->timeout($socketTimeout);
 $userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
 my $request = new HTTP::Request GET => "$url";
-my $html = $userAgent->request($request)->content;
+my $result = $userAgent->request($request);
+
+if (!$result->is_success)
+{
+  # Don't change "Couldn't get". It's used by CachedDataUsable
+  print "Couldn't get data. Error on HTTP request: ".$result->message.".\n";
+  return;
+}
+
+return $result->content;
+}
+
+# ------------------------------------------------------------------------------
+
+sub GetText
+{
+my ($url,$startPattern,$endPattern) = @_;
+
+my $html = &GetUrl($url);
 
 return () if ((!defined $html) || ($html eq ""));
 
@@ -218,7 +255,6 @@ $html =~ s/(.*?)$endPattern.*/$1/s
 
 # Remove all tags
 $html =~ s/<.*?>//gs;
-
 # Remove all fragments of tags at the beginning
 $html =~ s/^.*>//s;
 
@@ -230,6 +266,56 @@ $html =~ s/^\n*(.*?)\n*$/$1/s;
 
 # Remove extra newlines between paragraphs
 $html =~ s/\n\n\n/\n\n/sg;
+
+if ($html eq "")
+{
+  # Don't change "Couldn't get". It's used by CachedDataUsable
+  print "Couldn't get data. GetText pattern resulted in empty string.\n";
+  return;
+};
+
+return ($html);
+}
+# ------------------------------------------------------------------------------
+
+# Extracts HTML between startPattern and endPattern. 
+
+# This function returns a list to be compatible with GetLinks in the context
+# of HandleGeneric. startPattern and endPattern can be "^" or "\$" to match
+# the beginning of the file or the end of the file.
+sub GetHtml
+{
+my ($url,$startPattern,$endPattern) = @_;
+
+my $html = &GetUrl($url);
+
+return () if ((!defined $html) || ($html eq ""));
+
+# Strip off all the stuff before and after the start and end patterns
+$html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s
+  if (($startPattern ne "^") && ($endPattern ne "\$"));
+$html =~ s/.*?$startPattern(.*)/$1/s
+  if (($startPattern ne "^") && ($endPattern eq "\$"));
+$html =~ s/(.*?)$endPattern.*/$1/s
+  if (($startPattern eq "^") && ($endPattern ne "\$"));
+
+# Figure out how to make relative links absolute.
+my $baseurl;
+if ($url =~ m#(http://.*?)/# || $url =~ m#(http://.*?)#)
+{
+  $baseurl = $1;
+}
+
+# Change relative tags to absolute
+$baseurl = "$baseurl/" if $baseurl !~ m#/$#;
+$html =~ s/(<(?:a href|img src)\s*=")([^"]+)("[^>]*>)/sprintf("$1%s$3",URI::URL->new($2,$baseurl)->abs)/egi;
+
+if ($html eq "")
+{
+  # Don't change "Couldn't get". It's used by CachedDataUsable
+  print "Couldn't get data. GetHtml pattern resulted in empty string.\n";
+  return;
+};
 
 return ($html);
 }
@@ -246,11 +332,7 @@ sub GetLinks
 {
 my ($url,$startPattern,$endPattern) = @_;
 
-my $userAgent = new LWP::UserAgent;
-$userAgent->timeout($socketTimeout);
-$userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
-my $request = new HTTP::Request GET => "$url";
-my $html = $userAgent->request($request)->content;
+my $html = &GetUrl($url);
 
 return () if ((!defined $html) || ($html eq ""));
 
@@ -284,14 +366,21 @@ while ($html =~ /(<a href.*?>.*?<\/a>)/sgci)
   # Remove any formatting
   $link =~ s/< *\/?(font|li|b).*?>//sig;
 
-  # Put quotes around "a href" and "src" if they don't have it.
-  $link =~ s/<((?:a href|src)[^>=]+?=)((?!")[^\s>]+)(?!")([^>]*)>/<$1"$2"$3>"/gi;
+  # Put quotes around "a href" and "img src" if they don't have it.
+  $link =~ s/<((?:a href|img src)[^>=]+?=)((?!")[^\s>]+)(?!")([^>]*)>/<$1"$2"$3>"/gi;
 
   # change relative tags to absolute
-  $link =~ s/(<[^=]+?=")([^"]+)("[^>]*>)/sprintf("$1%s$3",URI::URL->new($2,$baseurl)->abs)/egi;
+  $link =~ s/(<(?:a href|img src)\s*=")([^"]+)("[^>]*>)/sprintf("$1%s$3",URI::URL->new($2,$baseurl)->abs)/egi;
 
   push @links,$link;
 }
+
+if ($#links == -1)
+{
+  # Don't change "Couldn't get". It's used by CachedDataUsable
+  print "Couldn't get data. GetLinks found no links.\n";
+  return;
+};
 
 return @links;
 }
@@ -394,21 +483,25 @@ print "<!-- $tagName ".$time." -->\n";
 
 # Get the data
 my @grabbedData = eval $getFunction;
+print "Warning: Could not parse get function for $tagName.\n" if $@;
+
 print "<!--DEBUG: Acquired ".($#grabbedData+1)." lines of data.-->\n" if (DEBUG);
 
 # Filter the data
 eval $filterCode;
+print "Warning: Could not parse filter function for $tagName.\n" if $@;
 
-if ($#grabbedData == -1)
+if (($#grabbedData == -1) || (($#grabbedData == 0) && ($grabbedData[0] eq "")))
 {
   # Don't change "Couldn't get". It's used by CachedDataUsable
-  print "Couldn't get $tagName.\n";
+  print "Couldn't get data. Filter code removed all content.\n";
   print "<!-- $tagName ".$time." -->\n";
   return;
-};
+}
 
 # Output the data
 eval $outputCode;
+print "Warning: Could not parse output function for $tagName.\n" if $@;
 
 print "<!-- $tagName ".$time." -->\n";
 return;
@@ -626,13 +719,13 @@ return if &CachedDataUsable($tagName,@$updateTimes);
 my $time = time;
 print "<!-- $tagName ".$time." -->\n";
 
-my $userAgent = new LWP::UserAgent;
-$userAgent->timeout($socketTimeout);
-$userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
-my $request = new HTTP::Request GET => $attributes->{url};
-my $html = $userAgent->request($request)->content;
+my $html = &GetUrl($attributes->{url});
 
-return if ((!defined $html) || ($html eq ""));
+if ((!defined $html) || ($html eq ""))
+{
+  print "<!-- $tagName ".$time." -->\n";
+  return;
+}
 
 my ($currentWeather) = $html =~ /=====\n(.*?)\n/s;
 my ($forecast) = $html =~ /\n (\S.*?)\n\s*\n/s;
@@ -738,6 +831,12 @@ if ((!DEBUG) && ($^O ne "MSWin32"))
 
 # Make unbuffered for easier debugging.
 $| = 1 if (DEBUG);
+
+# See if the user specified the input and output files on the command line.
+my %opts;
+getopt("io",\%opts);
+$inHtml = $opts{i} if defined $opts{i};
+$outHtml = $opts{o} if defined $opts{i};
 
 # Store the old STDOUT so we can replace it later.
 open (OLDOUT, ">&STDOUT") if (!DEBUG);

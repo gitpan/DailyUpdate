@@ -1,0 +1,16 @@
+The purpose of this document is twofold: to give you an idea of what I'd like
+to do in future versions of DailyUpdate, and to give you an idea of what you
+can help me implement. :)
+
+- Tooltips: Some website present information-less headlines, and a blurb
+  explaining the headline. It would be nice if the blurb popped up when the
+  user's mouse moved over the link.
+- Improved acquisition/output methods: Right now, the user writes Perl code to
+  acquire the data and output it. Since the code has to work within the
+  context of HandleGeneric, it has to use @grabbedData. This results in
+  wierdness like GetText returning it's data in the first element of the
+  @grabbedData array.
+- Real manipulation of the output HTML syntax tree: Right now I just output a
+  hunk of HTML when a tag is seen. But for more advanced stuff, like
+  javascript in the header, I should really be manipulating the abstract
+  syntax tree for the output HTML.
