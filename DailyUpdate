@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# Daily Update, Version 4.0
+# Daily Update, Version 4.1
 
 # DailyUpdate grabs dynamic information from the internet and integrates it
 # into your webpage. Features:
@@ -10,6 +10,9 @@
 # - Compatible with cgi-wrap (if you want to call it on-the-fly)
 
 # For documentation, go to http://www.cs.virginia.edu/~dwc3q/code/update.html
+
+# This code uses LWP::UserAgent and HTML::Parse from the libwww library,
+# available on CPAN at %CPAN%/modules/by-module/LWP/.
 
 # I suggest using wwwis by Alex Knowles if your file contains a lot of images,
 # which can slow down viewing time on browsers. His script, at
@@ -46,15 +49,24 @@
 # http://www.opensource.org/gpl-license.html and http://www.opensource.org/.
 
 # Version History (major changes only)
-# 4 This is a major rewrite of DailyUpdate. I've been meaning to do this for a
-#   while, but have had few users, and therefore very little external pressure
-#   to do it.
+# 4.1 Added User Friendly and Freshmeat. Fixed slashdot to take a style.
+#     Modified GetText to take "^" and "\$" signifying start and end of file.
+#     Changed the script to use LWP's get instead of my GetUrl. (reuse!)
+# 4   This is a major rewrite of DailyUpdate. I've been meaning to do this for
+#     a while, but have had few users, and therefore very little external
+#     pressure to do it.
 
 ################################################################################
 
 # Tags (thanks to David Engler for the HTML markup idea):
-# <slashdot> Slashdot Headlines
+# <slashdot style=X> Slashdot Headlines Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
+# <freshmeat style=X> Freshmeat news. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
 # <calvin> Calvin and Hobbes comic image link
+# <userfriendly> User Friendly comic image link
 # <dilbert> Dilbert comic image link
 # <date style=X> Styles:
 #   day = Wednesday, November 7
@@ -151,6 +163,15 @@ my %tagToHandler = (
     '&GetLinks($url,"(?i)comic strip","(?i)<br")',
     'print "  $grabbedData[0]\n"',
   ],
+  userfriendly =>
+  [
+    \&HandleGeneric,
+    [7],
+    "http://www.userfriendly.org/static/",
+    "User Friendly",
+    '&GetLinks($url,"(?i)<hr size=\"6\">","(?i)<font")',
+    'print "  $grabbedData[0]\n"',
+  ],
   slashdot =>
   [
     \&HandleGeneric,
@@ -158,7 +179,25 @@ my %tagToHandler = (
     "http://www.slashdot.org/ultramode.txt",
     "Slashdot Headlines",
     '&GetText($url,"%%\n","\$")',
-    '$grabbedData[0] =~ s/\%\%\n(.*?)\n(.*?)\n/print("  <li> <a href=\"$2\">$1<\/a>\n")/esg',
+    # Take the text from ultramode. Look for the two lines after %%. When you
+    # see them, push a <a href> onto @grabbedData. shift the original text
+    # from GetText off of @grabbedData. Output the list or columns based on
+    # the style.
+    '$grabbedData[0] =~ s/\%\%\n(.*?)\n(.*?)\n/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData;&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+  ],
+  freshmeat =>
+  [
+    \&HandleGeneric,
+    [2,5,8,11,14,17,20,23],
+#    "http://files.freshmeat.net/freshmeat/recentnews.txt",
+    "ftp://ftp.freshmeat.net/pub/files/freshmeat/recentnews.txt",
+    "Freshmeat News",
+    '&GetText($url,"^","\$")',
+    # Take the plain text. Look for the first and third lines. When you
+    # see them, push a <a href> onto @grabbedData. shift the original text
+    # from GetText off of @grabbedData. Output the list or columns based on
+    # the style.
+    '$grabbedData[0] =~ s/([^\n]+)\n[^\n]+\n([^\n]+)/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData;&OutputListOrColumns($attributes,$tagName,@grabbedData)',
   ],
   cnnsports =>
   [
@@ -183,7 +222,8 @@ my %tagToHandler = (
   [
     \&HandleWeather,
     [5,11,16],
-    "http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt"
+    "http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt",
+    "NWS Weather",
   ],
   coolsite =>
   [
@@ -212,96 +252,13 @@ EOF
 
 # ----------------- You shouldn't modify stuff below this line -----------------
 
-use Socket;
+use LWP::UserAgent;
 use Time::Local;
 
 use constant DEBUG => Main::DEBUG;
 
 use vars qw( @ISA );
 @ISA = qw(HTML::Parser);
-
-# ------------------------------------------------------------------------------
-
-# Subroutine to get HTTP text from a URL.  Adapted from WWWgrab by
-# Jeff Ballard (ballard@cae.wisc.edu)
-sub geturl
-{
-my (@array);
-
-# Separate the site and file from the url.
-my $url = shift;
-$url =~ m#http://([^/]*)/*([^ ]*)#;
-my $site = $1;
-my $file = "/".$2;
-
-if (!$site) {return 1};
-
-# Separate the site from the port.
-$site =~ /^([^:]*):*([^ ]*)/;
-$site = $1;
-my $port = $2;
-$port = 80 unless $port;
-
-print "<!--DEBUG: Getting URL:$url-->\n" if (DEBUG);
-print "<!--DEBUG:   Host=$site Port=$port File=$file-->\n" if (DEBUG);
-
-# Modified by Bob Anzlovar to use "use Socket" instead of "require socket.ph"
-
-my $sockaddr = 'S n a4 x8';
-my $hostname;
-chop($hostname = `hostname`);
-
-my ($name,$aliases,$proto,$type,$len,$thisaddr,$thataddr);
-($name, $aliases, $proto) = getprotobyname('tcp');
-($name, $aliases, $port) = getservbyname($port,'tcp')
-    unless $port =~ /^\d+$/;
-($name, $aliases, $type, $len, $thisaddr) = gethostbyname($hostname);
-($name, $aliases, $type, $len, $thataddr) = gethostbyname($site);
-
-my $this = pack($sockaddr, &AF_INET, 0, $thisaddr);
-my $that = pack($sockaddr, &AF_INET, $port, $thataddr);
-
-# Wrap all this dangerous stuff in a timeout.
-$SIG{ALRM} = \&timeout;
-eval {
-  alarm($socketTimeout); # Timeout in $sockettimeout seconds
-  socket(S, &PF_INET, &SOCK_STREAM, $proto);
-  bind(S, $this);
-  connect(S, $that);
-  my $rin = '';
-  vec($rin,fileno(S),1) = 1;
-
-  select(S);
-  $|=1;
-  select(STDOUT);
-  print S "GET $file\r\n";
-
-  # Give a server 30 seconds to respond.
-  if (select($rin,undef,undef,30)) {
-    @array = <S>;
-  } else {
-    die "alarm\n";
-  }
-
-  close(S);
-  alarm(0);
-};
-
-# If we timed out from either the SIG{ALRM} or in the select, just return.
-if ($@ =~ /alarm/) {
-  return;
-}
-
-# Strip linefeeds off the lines
-grep {s/\r//g} @array;
-
-# Return the results
-return @array;
-}
-
-sub timeout {
-  die "alarm\n";
-}
 
 # ------------------------------------------------------------------------------
 
@@ -376,17 +333,24 @@ return 1;
 # blank lines between paragraphs into a single blank line.
 
 # This function returns a list to be compatible with GetLinks in the context
-# of HandleGeneric
+# of HandleGeneric. startPattern and endPattern can be "^" or "\$" to match
+# the beginning of the file or the end of the file.
 sub GetText
 {
 my ($url,$startPattern,$endPattern) = @_;
 
-my $html = join "",&geturl($url);
+my $userAgent = new LWP::UserAgent;
+$userAgent->timeout($socketTimeout);
+my $request = new HTTP::Request GET => "$url";
+my $html = $userAgent->request($request)->content;
 
-return () if (($html eq "") || ($html !~ /$startPattern.*$endPattern/s));
+return () if ((!defined $html) || ($html !~ /$startPattern.*$endPattern/s));
 
 # Strip off all the stuff before and after the start and end patterns
-$html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s;
+$html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s
+  if (($startPattern ne "^") && ($endPattern ne "\$"));
+$html =~ s/.*?$startPattern(.*)/$1/s if ($endPattern eq "\$");
+$html =~ s/(.*?)$endPattern.*/$1/s if ($startPattern eq "^");
 
 # Remove all tags
 $html =~ s/<.*?>//gs;
@@ -416,9 +380,12 @@ sub GetLinks
 {
 my ($url,$startPattern,$endPattern) = @_;
 
-my $html = join "",&geturl($url);
+my $userAgent = new LWP::UserAgent;
+$userAgent->timeout($socketTimeout);
+my $request = new HTTP::Request GET => "$url";
+my $html = $userAgent->request($request)->content;
 
-return () if (($html eq "") || ($html !~ /$startPattern.*$endPattern/s));
+return () if ((!defined $html) || ($html !~ /$startPattern.*$endPattern/s));
 
 # Strip off all the stuff before and after the start and end patterns
 $html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s;
@@ -480,14 +447,14 @@ sub PrintTwoColumns
 
   print ("<tr>\n  <td valign=top>\n");
 
-  for (my $index=0;$index < ($#items + 1) / 2;$index = $index + 1)
+  for (my $index=0;$index < int($#items/2)+1;$index++)
   {
     print ("    $items[$index]<br>\n");
   }
 
   print "  </td>\n  <td valign=top>\n";
 
-  for (my $index=($#items + 1) / 2;$index <= $#items;$index = $index + 1)
+  for (my $index=int($#items/2)+1;$index <= $#items;$index++)
   {
     print ("    $items[$index]<br>\n");
   }
@@ -547,6 +514,7 @@ print "<!-- $tagName ".$time." -->\n";
 
 # Get the data
 my @grabbedData = eval $getFunction;
+print "<!--DEBUG: Acquired ".($#grabbedData+1)." lines of data.-->\n" if (DEBUG);
 
 if ($#grabbedData == -1)
 {
@@ -563,7 +531,7 @@ print "<!-- $tagName ".$time." -->\n";
 return 0;
 }
 
-# ------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 
 # Output the date in the following formats, depending on the parameter passed:
 # style=day: Tuesday, November 7
@@ -733,14 +701,19 @@ sub HandleWeather
 my $attributes = shift;
 my $updateTimes = shift;
 my $url = shift;
-my $tagName = "NWS Weather";
+my $tagName = shift;
 
 return 0 if &CachedDataUsable($tagName,@$updateTimes);
 
 my $time = time;
 print "<!-- $tagName ".$time." -->\n";
 
-my $html = join "",&geturl($url);
+my $userAgent = new LWP::UserAgent;
+$userAgent->timeout($socketTimeout);
+my $request = new HTTP::Request GET => "$url";
+my $html = $userAgent->request($request)->content;
+
+return () if !defined $html;
 
 my ($currentWeather) = $html =~ /=====\n(.*?)\n/s;
 my ($forecast) = $html =~ /\n (\S.*?)\n\s*\n/s;
@@ -799,8 +772,12 @@ sub start
   {
     if ($tag =~ /^$jump$/i)
     {
-      my $handler = shift @{$tagToHandler{$jump}};
-      &{$handler}($attributeList,@{$tagToHandler{$jump}});
+      my $handler = ${$tagToHandler{$jump}}[0];
+      # "&{$handler}" is a function call to the function reference $handler.
+      # The arguments are the attribute list, and the list of data in
+      # $tagToHandler after the function. (That is, from array location 1 to
+      # the end.)
+      &{$handler}($attributeList,@{$tagToHandler{$jump}}[1..$#{$tagToHandler{$jump}}]);
       $recognizedTag = 1;
       last;
     }
@@ -861,7 +838,7 @@ $p->parse_file($inHtml);
 if (!DEBUG)
 {
   close (STDOUT);
-  open(STDOUT, ">&OLDOUT");
+  open(STDOUT, ">&OLDOUT") or die "Can't open output file.\n";
 
   # Replace the output file with the temp file.
   unlink $outHtml;

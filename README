@@ -1,8 +1,15 @@
-DailyUpdate version 4.0
+DailyUpdate version 4.1
 
 DailyUpdate is an information integrator. It creates a custom web page from a
 template HTML file with special tags, replacing those tags with dynamic
 information acquired from the internet.
+
+DailyUpdate needs libwww for Perl. Get it from CPAN at
+%CPAN%/modules/by-module/LWP/.
+
+New in version 4.1: Added "User Friendly" and "Freshmeat" support. Fixed
+Slashdot so that it takes a style. Changed it to use LWP instead of my own
+HTTP sockets stuff.
 
 New in version 4.0: This is a total rewrite, resulting in a modular,
 extensible script that is half the size of the previous version.
