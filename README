@@ -1,0 +1,20 @@
+DailyUpdate version 4.0
+
+DailyUpdate is an information integrator. It creates a custom web page from a
+template HTML file with special tags, replacing those tags with dynamic
+information acquired from the internet.
+
+New in version 4.0: This is a total rewrite, resulting in a modular,
+extensible script that is half the size of the previous version.
+
+Written by David Coppit (coppit@cs.virginia.edu,
+  http://www.cs.virginia.edu/~dwc3q/index.html)
+
+Send me email if you would like to be notified of updates.
+
+Please send me any modifications you make. (for the better, that is. :) Keep
+in mind that I'm likely to turn down obscure features to avoid including
+everything but the kitchen sink.
+
+This code is distributed under the GNU General Public License (GPL). See
+http://www.opensource.org/gpl-license.html and http://www.opensource.org/.

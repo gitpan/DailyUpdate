@@ -1,0 +1,879 @@
+#!/usr/bin/perl
+
+# Daily Update, Version 4.0
+
+# DailyUpdate grabs dynamic information from the internet and integrates it
+# into your webpage. Features:
+# - Timeouts to handle dead servers without hanging the script
+# - User-defined update times
+# - Modular design allows easy extension to new data sources
+# - Compatible with cgi-wrap (if you want to call it on-the-fly)
+
+# For documentation, go to http://www.cs.virginia.edu/~dwc3q/code/update.html
+
+# I suggest using wwwis by Alex Knowles if your file contains a lot of images,
+# which can slow down viewing time on browsers. His script, at
+# http://www.tardis.ed.ac.uk/~ark/wwwis/, will determine image sizes and
+# insert them into the HTML.
+
+# To use, change the $inHtml and $outHtml variables below (at least) and
+# modify the file permissions to allow execution. Then just run DailyUpdate.
+# Oh yeah, you might want to check out the template file, which has some
+# options already set (such as the various styles.)
+
+# Later, you might want to customize or extend the data gathered by this
+# script. See the "tagToHandler" structure below. (You will probably want to
+# change the Cool Site of the Day image so that it doesn't download mine all
+# the time.)
+
+################################################################################
+
+# If you would like to be notified of updates, send email to me at
+# coppit@cs.virginia.edu. The latest version is always at
+# http://www.cs.virginia.edu/~dwc3q/code/.
+
+# Written by: David Coppit  http://www.cs.virginia.edu/~dwc3q/index.html
+#                          <coppit@cs.virginia.edu>
+# Early versions also hacked on by: Bob Anzlovar <bob.anzlovar@ssds.com>,
+# Christian Blair <webguy@con2.com>, Alvaro Herrera <alvherre@enlaces.c5.cl>,
+# David Engler <dengler@mindspring.net>
+
+# Please send me any modifications you make. Keep in mind that I'm likely to
+# turn down obscure features to avoid including everything but the kitchen
+# sink.
+
+# This code is distributed under the GNU General Public License (GPL). See
+# http://www.opensource.org/gpl-license.html and http://www.opensource.org/.
+
+# Version History (major changes only)
+# 4 This is a major rewrite of DailyUpdate. I've been meaning to do this for a
+#   while, but have had few users, and therefore very little external pressure
+#   to do it.
+
+################################################################################
+
+# Tags (thanks to David Engler for the HTML markup idea):
+# <slashdot> Slashdot Headlines
+# <calvin> Calvin and Hobbes comic image link
+# <dilbert> Dilbert comic image link
+# <date style=X> Styles:
+#   day = Wednesday, November 7
+#   numeric = 951107
+#   long = November 7, 1995
+# <weather>
+# <apnews style=X> AP News from Yahoo. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
+# <coolsite> Cool Site of the day.
+# <uselessfact> Useless Fact of the day.
+# <cnnsports style=X> CNN/Sports Illustrated sports headlines. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
+# <wirednews style=X> Wired headlines. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
+
+require 5.001;
+use strict;
+use HTML::Parse;
+use URI::URL;
+
+package Main;
+
+# Debug mode: doesn't put a time limit on the script, outputs some
+# <!--DEBUG:...--> commentary, and doesn't write to the output file (instead
+# it dumps to screen).
+use constant DEBUG => 0;
+
+# ------------------------- You can modify this stuff -------------------------
+
+# $socketTimeout is the length of time to allow any particular web service to
+#   respond.
+# $scripttimeout is the length of time to allow DailyUpdate to run.
+
+my ($inHtml,$outHtml);
+if (DEBUG)
+{
+  $inHtml = "template.html";
+  $outHtml = "daily.html";
+}
+else
+{
+  $inHtml = "/users/dwc3q/public_html/cgi-bin/template.html";
+  $outHtml = "/users/dwc3q/public_html/daily.html";
+}
+
+my $socketTimeout = 60;
+my $scriptTimeout = 240;
+
+package dailyUpdateParser;
+
+# This structure specifies the mapping between the tag in the template file
+# and the handler for it. There are a couple of special ones (namely the date
+# and weather), but most use the "HandleGeneric" function.
+
+# The parameters to the HandleGeneric function are:
+# - the hours of the day at which to update the data
+# - the url from which to get the data
+# - the name of the data (used in error messages and output comments)
+# - the function to use to get the data (GetLinks and GetText are good
+#   examples so far. See their comments for more info.)
+# - the function to use to output the data
+my %tagToHandler = (
+  date =>
+  [
+    \&HandleDate,
+  ],
+  apnews =>
+  [
+    \&HandleGeneric,
+    [2,5,8,11,14,17,20,23],
+    "http://dailynews.yahoo.com/headlines/top_stories/ap/index.html",
+    "AP News",
+    '&GetLinks($url,"ap_headlines","<hr")',
+    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+  ],
+  dilbert =>
+  [
+    \&HandleGeneric,
+    [7],
+    "http://www.unitedmedia.com/comics/dilbert/index.html",
+    "Dilbert",
+    '&GetLinks($url,"(?i)today\'s strip","(?i)</td>")',
+    'print "  $grabbedData[0]\n"',
+  ],
+  calvin =>
+  [
+    \&HandleGeneric,
+    [7],
+    "http://www.uexpress.com/ups/comics/ch/",
+    "Calvin and Hobbes",
+    '&GetLinks($url,"(?i)comic strip","(?i)<br")',
+    'print "  $grabbedData[0]\n"',
+  ],
+  slashdot =>
+  [
+    \&HandleGeneric,
+    [2,5,8,11,14,17,20,23],
+    "http://www.slashdot.org/ultramode.txt",
+    "Slashdot Headlines",
+    '&GetText($url,"%%\n","\$")',
+    '$grabbedData[0] =~ s/\%\%\n(.*?)\n(.*?)\n/print("  <li> <a href=\"$2\">$1<\/a>\n")/esg',
+  ],
+  cnnsports =>
+  [
+    \&HandleGeneric,
+    [2,5,8,11,14,17,20,23],
+    "http://www.cnnsi.com/",
+    "CNN/SI Sports",
+    '&GetLinks($url,"topstories","transactions")',
+    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+  ],
+  wirednews =>
+  [
+    \&HandleGeneric,
+    [2,5,8,11,14,17,20,23],
+    "http://www.wired.com/news/",
+    "Wired News",
+    '&GetLinks($url,"(?i)other top stories","(?i)----trades----")',
+    # Here I'm deleting some bogus links before outputting the results.
+    '@grabbedData = grep {!/">in/} @grabbedData;&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+  ],
+  weather =>
+  [
+    \&HandleWeather,
+    [5,11,16],
+    "http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt"
+  ],
+  coolsite =>
+  [
+    \&HandleGeneric,
+    [7],
+    "http://www.cool.infi.net/frmindex.html",
+    "Cool Site of the Day",
+    '&GetText($url,"(?i)insert cool site here.*src=\"","\">")',
+    'print <<EOF;
+<a href="$grabbedData[0]">
+<img src="http://www.cs.virginia.edu/~dwc3q/images/coolsite.gif" border=0 width=199 height=26 alt="Today\'s Cool Site">
+</a>
+EOF
+',
+  ],
+  uselessfact =>
+  [
+    \&HandleGeneric,
+    [7],
+    "http://www.southhouse.com/useless/",
+    "Useless Fact of the Day",
+    '&GetText($url,"(?i)white.*arial","(?i)</font>")',
+    'print ("$grabbedData[0]\n")',
+  ],
+);
+
+# ----------------- You shouldn't modify stuff below this line -----------------
+
+use Socket;
+use Time::Local;
+
+use constant DEBUG => Main::DEBUG;
+
+use vars qw( @ISA );
+@ISA = qw(HTML::Parser);
+
+# ------------------------------------------------------------------------------
+
+# Subroutine to get HTTP text from a URL.  Adapted from WWWgrab by
+# Jeff Ballard (ballard@cae.wisc.edu)
+sub geturl
+{
+my (@array);
+
+# Separate the site and file from the url.
+my $url = shift;
+$url =~ m#http://([^/]*)/*([^ ]*)#;
+my $site = $1;
+my $file = "/".$2;
+
+if (!$site) {return 1};
+
+# Separate the site from the port.
+$site =~ /^([^:]*):*([^ ]*)/;
+$site = $1;
+my $port = $2;
+$port = 80 unless $port;
+
+print "<!--DEBUG: Getting URL:$url-->\n" if (DEBUG);
+print "<!--DEBUG:   Host=$site Port=$port File=$file-->\n" if (DEBUG);
+
+# Modified by Bob Anzlovar to use "use Socket" instead of "require socket.ph"
+
+my $sockaddr = 'S n a4 x8';
+my $hostname;
+chop($hostname = `hostname`);
+
+my ($name,$aliases,$proto,$type,$len,$thisaddr,$thataddr);
+($name, $aliases, $proto) = getprotobyname('tcp');
+($name, $aliases, $port) = getservbyname($port,'tcp')
+    unless $port =~ /^\d+$/;
+($name, $aliases, $type, $len, $thisaddr) = gethostbyname($hostname);
+($name, $aliases, $type, $len, $thataddr) = gethostbyname($site);
+
+my $this = pack($sockaddr, &AF_INET, 0, $thisaddr);
+my $that = pack($sockaddr, &AF_INET, $port, $thataddr);
+
+# Wrap all this dangerous stuff in a timeout.
+$SIG{ALRM} = \&timeout;
+eval {
+  alarm($socketTimeout); # Timeout in $sockettimeout seconds
+  socket(S, &PF_INET, &SOCK_STREAM, $proto);
+  bind(S, $this);
+  connect(S, $that);
+  my $rin = '';
+  vec($rin,fileno(S),1) = 1;
+
+  select(S);
+  $|=1;
+  select(STDOUT);
+  print S "GET $file\r\n";
+
+  # Give a server 30 seconds to respond.
+  if (select($rin,undef,undef,30)) {
+    @array = <S>;
+  } else {
+    die "alarm\n";
+  }
+
+  close(S);
+  alarm(0);
+};
+
+# If we timed out from either the SIG{ALRM} or in the select, just return.
+if ($@ =~ /alarm/) {
+  return;
+}
+
+# Strip linefeeds off the lines
+grep {s/\r//g} @array;
+
+# Return the results
+return @array;
+}
+
+sub timeout {
+  die "alarm\n";
+}
+
+# ------------------------------------------------------------------------------
+
+# Checks the old html file to see if we need to change the information.  If
+# the file doesn't exist, the time tag can't be found, the information is old,
+# or the information couldn't be gotten on the last attempt, the function
+# returns 1.  Otherwise, it outputs the old information and returns 0.
+# Parameters: (Comment string, update times)
+sub CachedDataUsable
+{
+my ($tagName, @updateTimes) = @_;
+
+print "<!--DEBUG: CachedDataUsable: checking $tagName-->\n" if (DEBUG);
+
+my $currentTime = time;
+my ($hour,$day,$month,$year,$wday) = (localtime($currentTime))[2..6];
+
+# If there's no old data file, we have to generate the data.
+print "<!--DEBUG:  Old output file doesn't exist.-->\n" if (DEBUG && !-e $outHtml);
+return 0 if (!-e $outHtml);
+
+open (OLDHTML,$outHtml) or die "Can't open output file!\n";
+my $oldHtml = join "",<OLDHTML>;
+close (OLDHTML);
+
+my $lastUpdated;
+
+# Need to get data if we can't find the embedded timestamp
+if ($oldHtml !~ /<!-- $tagName (\d+) -->/)
+{
+  print "<!--DEBUG:  Can't find embedded timestamp for $tagName.-->\n" if (DEBUG);
+  return 0;
+}
+else
+{
+  $lastUpdated = $1;
+}
+
+# Need to get the data if we were unsuccessful last time
+if ($oldHtml =~ /<!-- $tagName (\d+) -->\nCouldn't get/)
+{
+  print "<!--DEBUG:  Data was not grabbed successfully last time.-->\n" if (DEBUG);
+  return 0;
+}
+
+print "<!--DEBUG:  Last updated:$lastUpdated Current time:$currentTime.-->\n" if (DEBUG);
+# Need to get the data if the old data is stale
+my $needToUpdate = 0;
+foreach my $updateHour (@updateTimes)
+{
+  my $updateTime = timelocal(0,0,$updateHour,$day,$month,$year);
+  if (($lastUpdated < $updateTime) && ($updateTime < $currentTime))
+  {
+    print "<!--DEBUG:  Data is stale for time: $updateTime.-->\n" if (DEBUG);
+    return 0;
+    last;
+  }
+}
+
+# Otherwise, just print out the old data
+print "<!--DEBUG: Re-using current data.-->\n" if (DEBUG);
+my ($oldData) = $oldHtml =~ /(<!-- $tagName \d+ -->\n.*?<!-- $tagName \d+ -->)/s;
+print "$oldData\n";
+
+return 1;
+}
+
+# ------------------------------------------------------------------------------
+
+# Extracts any normal text from the html at url, between startPattern and
+# endPattern. Removes beginning and ending newlines, and collapses multiple
+# blank lines between paragraphs into a single blank line.
+
+# This function returns a list to be compatible with GetLinks in the context
+# of HandleGeneric
+sub GetText
+{
+my ($url,$startPattern,$endPattern) = @_;
+
+my $html = join "",&geturl($url);
+
+return () if (($html eq "") || ($html !~ /$startPattern.*$endPattern/s));
+
+# Strip off all the stuff before and after the start and end patterns
+$html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s;
+
+# Remove all tags
+$html =~ s/<.*?>//gs;
+
+# Remove all fragments of tags at the beginning
+$html =~ s/^.*>//s;
+
+# Remove all fragments of tags at the end
+$html =~ s/<.*//s;
+
+# Remove starting and ending newlines
+$html =~ s/^\n*(.*?)\n*$/$1/s;
+
+# Remove extra newlines between paragraphs
+$html =~ s/\n\n\n/\n\n/sg;
+
+return ($html);
+}
+
+#-------------------------------------------------------------------------------
+
+# Extracts all <a href...>...</a> links at a given url between startPattern
+# and endPattern. Removes all text formatting, and makes relative links
+# absolute. Puts quotes around attribute values in stuff like <a href=blah> and
+# <img src=blah>.
+sub GetLinks
+{
+my ($url,$startPattern,$endPattern) = @_;
+
+my $html = join "",&geturl($url);
+
+return () if (($html eq "") || ($html !~ /$startPattern.*$endPattern/s));
+
+# Strip off all the stuff before and after the start and end patterns
+$html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s;
+
+# Figure out how to make relative links absolute.
+my $baseurl;
+if ($url =~ m#(http://.*?)/# || $url =~ m#(http://.*?)#)
+{
+  $baseurl = $1;
+}
+
+$baseurl = "$baseurl/" if $baseurl !~ m#/$#;
+
+my @links;
+
+# See if there's a link on this line
+while ($html =~ /(<a href.*?>.*?<\/a>)/sgci)
+{
+  my $link = $1;
+
+  # Remove any formatting
+  $link =~ s/< *\/?(font|li|b).*?>//sig;
+
+  # Put quotes around "a href" and "src" if they don't have it.
+  $link =~ s/<((?:a href|src)[^>=]+?=)((?!")[^\s>]+)(?!")([^>]*)>/<$1"$2"$3>"/gi;
+
+  # change relative tags to absolute
+  $link =~ s/(<[^=]+?=")([^"]+)("[^>]*>)/sprintf("$1%s$3",URI::URL->new($2,$baseurl)->abs)/egi;
+
+  push @links,$link;
+}
+
+return @links;
+}
+
+#-------------------------------------------------------------------------------
+
+# Formats the items in the argument array as an unformatted list
+sub PrintUnorderedList
+{
+  print "<ul>\n";
+  while (my $item = shift)
+  {
+    print "  <li> $item\n";
+  }
+  print "</ul>\n";
+}
+
+#-------------------------------------------------------------------------------
+
+# Formats the items in the argument array as two columns
+sub PrintTwoColumns
+{
+  my @items = @_;
+
+  print "<table width=100%>\n";
+
+  my $secondColumn = $#items;
+
+  print ("<tr>\n  <td valign=top>\n");
+
+  for (my $index=0;$index < ($#items + 1) / 2;$index = $index + 1)
+  {
+    print ("    $items[$index]<br>\n");
+  }
+
+  print "  </td>\n  <td valign=top>\n";
+
+  for (my $index=($#items + 1) / 2;$index <= $#items;$index = $index + 1)
+  {
+    print ("    $items[$index]<br>\n");
+  }
+
+  print ("  </td>\n</tr>\n");
+  print "</table>\n";
+}
+
+#-------------------------------------------------------------------------------
+
+# Prints the data as an unordered list or two equal length columns, depending
+# on $attributes->{style}
+sub OutputListOrColumns
+{
+my $attributes = shift;
+my $tagName = shift;
+my @data = @_;
+
+if ($attributes->{style} =~ /^unorderedlist$/i)
+{
+  &PrintUnorderedList(@data);
+}
+elsif ($attributes->{style} =~ /^twocolumn$/i)
+{
+  &PrintTwoColumns(@data);
+}
+else
+{
+  print "Warning: Unknown style for $tagName\n";
+}
+}
+
+#-------------------------------------------------------------------------------
+
+# This is a generic handler for most data sources.
+
+# The parameters are:
+# - the hours of the day at which to update the data
+# - the url from which to get the data
+# - the name of the data (used in error messages and output comments)
+# - the function to use to get the data (GetLinks and GetText are good
+#   examples so far. See their comments for more info.)
+# - the function to use to output the data
+sub HandleGeneric
+{
+my $attributes = shift;
+my $updateTimes = shift;
+my $url = shift;
+my $tagName = shift;
+my $getFunction = shift;
+my $outputFunction = shift;
+
+return 0 if &CachedDataUsable($tagName,@$updateTimes);
+
+my $time = time;
+print "<!-- $tagName ".$time." -->\n";
+
+# Get the data
+my @grabbedData = eval $getFunction;
+
+if ($#grabbedData == -1)
+{
+  # Don't change "Couldn't get". It's used by CachedDataUsable
+  print "Couldn't get $tagName.\n";
+  print "<!-- $tagName ".$time." -->\n";
+  return 1;
+};
+
+# Output the data
+eval $outputFunction;
+
+print "<!-- $tagName ".$time." -->\n";
+return 0;
+}
+
+# ------------------------------------------------------------------------------
+
+# Output the date in the following formats, depending on the parameter passed:
+# style=day: Tuesday, November 7
+# style=numeric: 951107
+# style=long: November 7, 1995
+sub HandleDate
+{
+my $attribs = shift;
+my ($hour,$day,$month,$year,$wday) = (localtime(time))[2..6];
+
+my @weekdays = qw{Sunday Monday Tuesday Wednesday Thursday Friday Saturday};
+my @months = qw{January February March April May June July August September
+                October November December};
+
+my $date;
+if ($attribs->{style} =~ /^day$/i)
+{
+  $date = $weekdays[$wday].", ".$months[$month]." ".$day
+}
+elsif ($attribs->{style} =~ /^numeric$/i)
+{
+  $date = $year;
+
+  if ($month < 10) {
+    $date = $date."0".($month+1)
+  }
+  else
+  {
+    $date = $date.($month+1)
+  };
+
+  if ($day < 10) {
+    $date = $date."0".$day
+  }
+  else
+  {
+    $date = $date.($day+1);
+  }
+}
+elsif ($attribs->{style} =~ /^long$/i)
+{
+  $date = $months[$month]." ".$day.", 19".$year;
+}
+else
+{
+  print "Warning: Unknown style for date\n";
+}
+
+print $date;
+}
+
+# ------------------------------------------------------------------------------
+
+# Prints out the current weather given the right line from the NWS format.
+sub FormatCurrentWeather
+{
+my $currentWeather = shift;
+
+print "<tr>\n <th> Currently </th>\n";
+
+($currentWeather) = $currentWeather =~ /^(  .*)/m;
+
+# Pretty up N/As
+$currentWeather =~ s/\bN\/A\b/Not Available/g;
+
+# Print the last part, which should be the skies.
+print " <td> \u\L$1 </td>\n" if ($currentWeather =~ /((\w|\w \w)+)$/);
+
+# Print the first part, which should be the temperature.
+print " <td> ",$1,"&#176; </td>\n" if ($currentWeather =~ /^ *(\d+)(?! percent)/);
+
+# Print the third part, which should be the winds and rain.
+print " <td> \u\L$1</td>\n" if ($currentWeather =~ /^ +\d+   +\S+   +((\w|\w \w)+)  +/);
+
+print "</tr>\n";
+}
+
+# ------------------------------------------------------------------------------
+
+# Prints out the weather forecast given the right paragraph from the NWS
+# format.
+sub FormatWeatherForecast
+{
+my $weatherText = shift;
+
+# Identify the days
+my @days = split(/^ /m, $weatherText);
+
+# Get rid of the bogus empty day
+shift @days;
+
+# Get rid of newlines
+grep {chomp;s/\n/ /g} @days;
+
+foreach my $day (@days)
+{
+  print "<tr>\n";
+
+  $day =~ s/^(.*?)\.\.\.//;
+  my $time = $1;
+  print " <th> \u\L$time </th>\n";
+
+  # Change multiple periods to single ones
+  $day =~ s/\.\.*/\./g;
+
+  # Remove spaces before periods
+  $day =~ s/\s+\./\./g;
+
+  my @sentences = split(/\.\s*/,$day);
+
+  # Print skies
+  print " <td>";
+  if ($sentences[0] =~ /(HIGH|LOW).*\d\d/)
+  {
+    print " &nbsp;";
+  }
+  else
+  {
+    while (($#sentences != -1) && ($sentences[0] !~ /(HIGH|LOW).*\d\d/))
+    {
+      my $sentence = shift @sentences;
+      print " \u\L$sentence.";
+    }
+  }
+  print " </td>\n";
+
+  # Print temperatures
+  print " <td>";
+  if ($sentences[0] !~ /(HIGH|LOW).*\d\d/)
+  {
+    print " &nbsp;";
+  }
+  else
+  {
+    while (($#sentences != -1) && ($sentences[0] =~ /(HIGH|LOW).*\d\d/))
+    {
+      my $sentence = shift @sentences;
+      print " \u\L$sentence.";
+    }
+  }
+  print " </td>\n";
+
+  # Print winds and rain
+  print " <td>";
+  if ($#sentences == -1)
+  {
+    print " &nbsp;";
+  }
+  else
+  {
+    while ($#sentences != -1)
+    {
+      my $sentence = shift @sentences;
+      print " \u\L$sentence.";
+    }
+  }
+  print " </td>\n</tr>\n";
+
+}
+}
+
+# ------------------------------------------------------------------------------
+
+# Gets the weather forecast from the NWS
+sub HandleWeather
+{
+my $attributes = shift;
+my $updateTimes = shift;
+my $url = shift;
+my $tagName = "NWS Weather";
+
+return 0 if &CachedDataUsable($tagName,@$updateTimes);
+
+my $time = time;
+print "<!-- $tagName ".$time." -->\n";
+
+my $html = join "",&geturl($url);
+
+my ($currentWeather) = $html =~ /=====\n(.*?)\n/s;
+my ($forecast) = $html =~ /\n (\S.*?)\n\s*\n/s;
+
+if (($forecast eq "") || ($currentWeather eq ""))
+{
+  # Don't change "Couldn't get". It's used by CachedDataUsable
+  print "Couldn't get $tagName.\n";
+  print "<!-- $tagName ".$time." -->\n";
+  return 1;
+};
+
+  # Print the table headers.
+  print <<EOT;
+<table width=100%>
+<tr>
+ <th></th>
+ <th> Skies </th>
+ <th> Temperature </th>
+ <th> Winds & Rain </th>
+</tr>
+EOT
+
+&FormatCurrentWeather($currentWeather);
+&FormatWeatherForecast($forecast);
+print "</table>\n";
+
+print "<!-- $tagName ".$time." -->\n";
+return 0;
+}
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+# This is the parser code. Basically, everything gets passed through except
+# certain tags, which are caught by the overridden "start" function.
+
+# Let the parser treat the custom tags as normal ones.
+$HTML::Parser::IGNORE_UNKNOWN = 0;
+
+# Basically pass everything through except the special tags.
+sub text { print "$_[1]"; }
+sub declaration { print "<!$_[1]>"; }
+sub comment { print "<!--$_[1]-->"; }
+sub end { print "</$_[1]>"; }
+
+sub start
+{
+  my $self = shift @_;
+  my $originalText = pop @_;
+  my ($tag, $attributeList) = @_;
+
+  # If we see a special tag, run the proper function for it.
+  my $recognizedTag = 0;
+  foreach my $jump (keys %tagToHandler)
+  {
+    if ($tag =~ /^$jump$/i)
+    {
+      my $handler = shift @{$tagToHandler{$jump}};
+      &{$handler}($attributeList,@{$tagToHandler{$jump}});
+      $recognizedTag = 1;
+      last;
+    }
+  }
+
+  # If it's not a special tag, just print it out.
+  if ($recognizedTag == 0)
+  {
+    print "$originalText";
+  }
+}
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+# Here's the main program
+
+package Main;
+
+# Disable the timers if in debug mode
+if (!DEBUG)
+{
+  if ((my $scriptpid = fork) != 0) 
+  {
+    if ((my $sleeppid = fork) != 0)   # Fork off the timer
+    {
+      # If Dailyupdate finishes before the timer goes off, kill the timer and
+      # exit.
+      waitpid ($scriptpid,0);
+      kill 9,$sleeppid;
+    }
+    else 
+    {
+      # If the timer goes off before Dailyupdate finishes, kill Dailyupdate
+      # (which will also kill the "Waiter" process) and exit.
+      sleep $scriptTimeout;
+      kill 9,$scriptpid;
+    }
+    exit (1);
+  }
+}
+
+# Make unbuffered for easier debugging.
+$| = 1 if (DEBUG);
+
+# Store the old STDOUT so we can replace it later.
+open (OLDOUT, ">&STDOUT");
+
+# Redirect STDOUT to a temp file.
+open (STDOUT,">".$outHtml.".temp") if (!DEBUG);
+
+# Okay, now do the magic. Parse the input file, calling the handlers whenever
+# a special tag is seen.
+my $p = new dailyUpdateParser;
+$p->parse_file($inHtml);
+
+# Restore STDOUT to the way it was
+if (!DEBUG)
+{
+  close (STDOUT);
+  open(STDOUT, ">&OLDOUT");
+
+  # Replace the output file with the temp file.
+  unlink $outHtml;
+  rename ($outHtml.".temp",$outHtml);
+  chmod 0755, $outHtml;
+
+  # Now print the results in case DailyUpdate was invoked through cgiwrap.
+  print "Content-type: text/html\n\n";
+
+  open (INFILE, $outHtml);
+  while (defined(my $line = <INFILE>)) {
+    print $line;
+  }
+  close INFILE;
+}
