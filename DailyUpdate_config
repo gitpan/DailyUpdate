@@ -1,0 +1,302 @@
+# This is the configuration file for DailyUpdate. Feel free to modify any of
+# the values here. You'll most likely want to change the data aquisition
+# schemas for the %tagToHandler structure below. See
+# http://www.cs.virginia.edu/~dwc3q/code/update.html for more information.
+# More data acquisition schemas can be found at
+# http://www.cs.virginia.edu/~dwc3q/code/schemas.html.
+
+package Main;
+
+# $inHtml is your template file. $outHtml is the resulting output file
+# Note that these are overridden by the main script if the DEBUG constant is
+# 1.
+$inHtml = "/users/dwc3q/public_html/cgi-bin/template.html";
+$outHtml = "/users/dwc3q/public_html/daily.html";
+
+# $scripttimeout is the length of time to allow DailyUpdate to run.
+$scriptTimeout = 240;
+
+package dailyUpdateParser;
+
+# Set $proxy if you use a proxy.
+$proxy = "";
+
+# $socketTimeout is the length of time to allow any particular web service to
+# respond.
+$socketTimeout = 60;
+
+# This structure specifies the mapping between the tag in the template file
+# and the handler for it. There are a couple of special ones (namely the date,
+# time, and weather), but most use the "HandleGeneric" function.
+
+# The parameters to the HandleGeneric function are:
+# - the hours of the day at which to update the data
+# - the url from which to get the data
+# - the name of the data (used in error messages and output comments)
+# - the function to use to get the data (GetLinks and GetText are good
+#   examples so far. See their comments for more info.)
+# - the code to use to filter the acquired data
+# - the code to use to output the data
+
+%tagToHandler = (
+
+# <time style=X> Styles:
+#   twentyfour = 14:17:59
+#   twelve = 2:17:59 PM (default)
+"time" =>
+[
+  \&HandleTime,
+],
+
+#-------------------------------------------------------------------------------
+
+# <date style=X> Styles:
+#   day = Wednesday, November 7 (default)
+#   numeric = 951107
+#   long = November 7, 1995
+#   any other valid strftime value (see man strftime 3)
+"date" =>
+[
+  \&HandleDate,
+],
+
+#-------------------------------------------------------------------------------
+
+# <apnews style=X> AP News from Yahoo. Styles:
+#   unorderedlist = Bulletted list (default)
+#   twocolumn = Two column table
+"apnews" =>
+[
+  \&HandleGeneric,
+  [2,5,8,11,14,17,20,23],
+  "http://dailynews.yahoo.com/headlines/top_stories/ap/index.html",
+  "AP News",
+  '&GetLinks($url,"ap_headlines","<hr")',
+  '',
+  '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+],
+
+#-------------------------------------------------------------------------------
+
+# <slashdot style=X> Slashdot Headlines Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
+"slashdot" =>
+[
+  \&HandleGeneric,
+  [2,5,8,11,14,17,20,23],
+  "http://www.slashdot.org/ultramode.txt",
+  "Slashdot Headlines",
+  '&GetText($url,"%%\n","\$")',
+  # Take the text from ultramode. Look for the two lines after %%. When you
+  # see them, push a <a href> onto @grabbedData. shift the original text
+  # from GetText off of @grabbedData. Output the list or columns based on
+  # the style.
+  '$grabbedData[0] =~ s/\%\%\n(.*?)\n(.*?)\n/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData',
+  '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+],
+
+#-------------------------------------------------------------------------------
+
+# <freshmeat style=X> Freshmeat news. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
+"freshmeat" =>
+[
+  \&HandleGeneric,
+  [2,5,8,11,14,17,20,23],
+  #"http://files.freshmeat.net/freshmeat/recentnews.txt",
+  "ftp://ftp.freshmeat.net/pub/files/freshmeat/recentnews.txt",
+  "Freshmeat News",
+  '&GetText($url,"^","\$")',
+  # Take the plain text. Look for the first and third lines. When you
+  # see them, push a <a href> onto @grabbedData. shift the original text
+  # from GetText off of @grabbedData. Output the list or columns based on
+  # the style.
+  '$grabbedData[0] =~ s/([^\n]+)\n[^\n]+\n([^\n]+)/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData',
+  '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+],
+
+#-------------------------------------------------------------------------------
+
+# <cnnsports style=X> CNN/Sports Illustrated sports headlines. Styles:
+#   unorderedlist = Bulletted list (default)
+#   twocolumn = Two column table
+"cnnsports" =>
+[
+  \&HandleGeneric,
+  [2,5,8,11,14,17,20,23],
+  "http://www.cnnsi.com/",
+  "CNN/SI Sports",
+  '&GetLinks($url,"topstories","transactions")',
+  '',
+  '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+],
+
+#-------------------------------------------------------------------------------
+
+# <yahoolinuxnews style=X> Yahoo's Linux headlines. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
+"yahoolinuxnews" =>
+[
+  \&HandleGeneric,
+  [2,5,8,11,14,17,20,23],
+  "http://headlines.yahoo.com/Full_Coverage/Tech/Linux/",
+  "Yahoo Linux News",
+  '&GetLinks($url,"(?i)news stories","(?i)\n</table>")',
+  '',
+  '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+],
+
+#-------------------------------------------------------------------------------
+
+# <wirednews style=X> Wired headlines. Styles:
+#   unorderedlist = Bulletted list (default)
+#   twocolumn = Two column table
+"wirednews" =>
+[
+  \&HandleGeneric,
+  [2,5,8,11,14,17,20,23],
+  "http://www.wired.com/news/",
+  "Wired News",
+  '&GetLinks($url,"(?i)other top stories","(?i)----trades----")',
+  # Here I'm deleting some bogus links before outputting the results.
+  '@grabbedData = grep {!/">in/} @grabbedData',
+  '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+],
+
+#-------------------------------------------------------------------------------
+
+# <linuxtoday style=X> Linux Today headlines. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
+"linuxtoday" =>
+[
+  \&HandleGeneric,
+  [2,5,8,11,14,17,20,23],
+  "http://linuxtoday.com/lthead.inc",
+  "Linux Today Headlines",
+  '&GetLinks($url,"^","\$")',
+  '',
+  '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+],
+
+#-------------------------------------------------------------------------------
+
+# <infoworld style=X> Infoworld headlines. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
+"infoworld" =>
+[
+  \&HandleGeneric,
+  [2,5,8,11,14,17,20,23],
+  "http://www.infoworld.com/",
+  "Infoworld Top News Stories",
+  '&GetLinks($url,"(?i)merge below","(?i)merge above")',
+  '',
+  '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+],
+
+#-------------------------------------------------------------------------------
+
+# <weather url=X> Url is the NWS text file for your city.
+"weather" =>
+[
+  \&HandleWeather,
+  [5,11,16],
+  "NWS Weather",
+],
+
+#-------------------------------------------------------------------------------
+
+# <coolsite> Cool Site of the day.
+"coolsite" =>
+[
+  \&HandleGeneric,
+  [7],
+  "http://www.cool.infi.net/frmindex.html",
+  "Cool Site of the Day",
+  '&GetText($url,"(?i)insert cool site here.*src=\"","\">")',
+  '',
+  'print <<EOF;
+<a href="$grabbedData[0]">
+<img src="http://www.cool.infi.net/images/coollogomid1.gif" border=0 width=280 height=70 alt="Today\'s Cool Site">
+</a>
+EOF
+',
+],
+
+#-------------------------------------------------------------------------------
+
+# <uselessfact> Useless Fact of the day.
+"uselessfact" =>
+[
+  \&HandleGeneric,
+  [7],
+  "http://www.southhouse.com/useless/",
+  "Useless Fact of the Day",
+  '&GetText($url,"(?i)white.*arial","(?i)</font>")',
+  '',
+  'print ("$grabbedData[0]\n")',
+],
+
+#-------------------------------------------------------------------------------
+
+# <dilbert> Dilbert comic image link
+"dilbert" =>
+[
+  \&HandleGeneric,
+  [7],
+  "http://www.unitedmedia.com/comics/dilbert/index.html",
+  "Dilbert",
+  '&GetLinks($url,"(?i)today\'s strip","(?i)</td>")',
+  '',
+  'print "  $grabbedData[0]\n"',
+],
+
+#-------------------------------------------------------------------------------
+
+# <calvin> Calvin and Hobbes comic image link
+"calvin" =>
+[
+  \&HandleGeneric,
+  [7],
+  "http://www.uexpress.com/ups/comics/ch/",
+  "Calvin and Hobbes",
+  '&GetLinks($url,"(?i)comic strip","(?i)<br")',
+  '',
+  'print "  $grabbedData[0]\n"',
+],
+
+#-------------------------------------------------------------------------------
+
+# <userfriendly> User Friendly comic image link
+"userfriendly" =>
+[
+  \&HandleGeneric,
+  [7],
+  "http://www.userfriendly.org/static/",
+  "User Friendly",
+  '&GetLinks($url,"(?i)<hr size=\"6\">","(?i)<font")',
+  '',
+  'print "  $grabbedData[0]\n"',
+],
+
+#-------------------------------------------------------------------------------
+
+# <adam> Adam@Home comic image link
+adam =>
+[
+  \&HandleGeneric,
+  [7],
+  "http://www.uexpress.com/ups/comics/ad/",
+  "Adam\@Home",
+  '&GetLinks($url,"ENDxx>","</TABLE")',
+  '',
+  'print "  $grabbedData[0]\n"',
+],
+
+);
+
+1;

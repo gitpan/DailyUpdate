@@ -1,6 +1,10 @@
-#!/usr/bin/perl -w
+# use perl                                  -*- mode: Perl; -*-
+eval 'exec perl -S $0 "$@"'
+  if $running_under_some_shell;
 
-# Daily Update, Version 4.3
+use vars qw($running_under_some_shell);         # no whining!
+
+# Daily Update, Version 4.4
 
 # DailyUpdate grabs dynamic information from the internet and integrates it
 # into your webpage. Features:
@@ -10,7 +14,9 @@
 # - Modular design allows easy extension to new data sources
 # - Compatible with cgi-wrap (if you want to call it on-the-fly)
 
-# For documentation, go to http://www.cs.virginia.edu/~dwc3q/code/update.html
+# For documentation, go to http://www.cs.virginia.edu/~dwc3q/code/update.html.
+# For examples of more data acquisition schemas, go to
+# http://www.cs.virginia.edu/~dwc3q/code/schemas.html
 
 # This code uses LWP::UserAgent from the libwww library, URI::URL, and
 # HTML::Parser, all of which are available on CPAN at
@@ -22,15 +28,13 @@
 # http://www.tardis.ed.ac.uk/~ark/wwwis/, will determine image sizes and
 # insert them into the HTML.
 
-# To use, change the $inHtml and $outHtml variables below (at least) and
-# modify the file permissions to allow execution. Then just run DailyUpdate.
-# Oh yeah, you might want to check out the template file, which has some
-# options already set (such as the various styles.)
+# To use, change the $inHtml and $outHtml variables in the configuration, and
+# any other settings you want. Then just run DailyUpdate.  Since the example
+# template isn't too exciting, you may want to take your normal homepage and
+# jazz it up with the new tags.
 
 # Later, you might want to customize or extend the data gathered by this
-# script. See the "tagToHandler" structure below. (You will probably want to
-# change the Cool Site of the Day image so that it doesn't download mine all
-# the time.)
+# script. See the "tagToHandler" structure in the configuration.
 
 ################################################################################
 
@@ -53,6 +57,10 @@
 
 # Version History (major changes only)
 
+# 4.4 Separated configuration from main script (yea!). Fixed "uninitialized
+#     variable" warnings. Created user-submitted schemas webpage at
+#     http://www.cs.virginia.edu/~dwc3q/code/schemas.html. Added more data
+#     acquisition schemas.
 # 4.3 Added Infoworld, changed date & time functions to take any valid
 #     strftime format string, changed CoolSite to use their logo, changed to
 #     only dump to screen if called as a cgi script, and added url attribute
@@ -73,44 +81,6 @@
 
 ################################################################################
 
-# Tags (thanks to David Engler for the HTML markup idea):
-# <slashdot style=X> Slashdot Headlines Styles:
-#   unorderedlist = Bulletted list
-#   twocolumn = Two column table
-# <freshmeat style=X> Freshmeat news. Styles:
-#   unorderedlist = Bulletted list
-#   twocolumn = Two column table
-# <linuxtoday style=X> Linux Today headlines. Styles:
-#   unorderedlist = Bulletted list
-#   twocolumn = Two column table
-# <infoworld style=X> Infoworld headlines. Styles:
-#   unorderedlist = Bulletted list
-#   twocolumn = Two column table
-# <date style=X> Styles:
-#   day = Wednesday, November 7 (default)
-#   numeric = 951107
-#   long = November 7, 1995
-#   any other valid strftime value (see man strftime 3)
-# <time style=X> Styles:
-#   twentyfour = 14:17:59
-#   twelve = 2:17:59 PM (default)
-# <weather url=X> Url is the NWS text file for your city.
-# <apnews style=X> AP News from Yahoo. Styles:
-#   unorderedlist = Bulletted list (default)
-#   twocolumn = Two column table
-# <coolsite> Cool Site of the day.
-# <uselessfact> Useless Fact of the day.
-# <cnnsports style=X> CNN/Sports Illustrated sports headlines. Styles:
-#   unorderedlist = Bulletted list (default)
-#   twocolumn = Two column table
-# <wirednews style=X> Wired headlines. Styles:
-#   unorderedlist = Bulletted list (default)
-#   twocolumn = Two column table
-# <calvin> Calvin and Hobbes comic image link
-# <userfriendly> User Friendly comic image link
-# <dilbert> Dilbert comic image link
-# <adam> Adam@Home comic image link
-
 require 5.001;
 use strict;
 # Used to parse the template file
@@ -125,221 +95,31 @@ package Main;
 # it dumps to screen).
 use constant DEBUG => 0;
 
-use vars qw( *OLDOUT );
+require "DailyUpdate_config";
 
-# ------------------------- You can modify this stuff -------------------------
+use vars qw( *OLDOUT $proxy $inHtml $outHtml $scriptTimeout );
 
-# Set $proxy if you use a proxy.
-my $proxy = "";
-
-# $inHtml is your template file. $outHtml is the resulting output file
-
-my ($inHtml,$outHtml);
 if (DEBUG)
 {
   $inHtml = "template.html";
   $outHtml = "daily.html";
 }
-else
-{
-  $inHtml = "/users/dwc3q/public_html/cgi-bin/template.html";
-  $outHtml = "/users/dwc3q/public_html/daily.html";
-}
 
-# $socketTimeout is the length of time to allow any particular web service to
-#   respond.
-# $scripttimeout is the length of time to allow DailyUpdate to run.
-
-my $socketTimeout = 60;
-my $scriptTimeout = 240;
-
+# Need to derive a parser class from HTML::Parser
 package dailyUpdateParser;
 
-# This structure specifies the mapping between the tag in the template file
-# and the handler for it. There are a couple of special ones (namely the date
-# and weather), but most use the "HandleGeneric" function.
+use vars qw( @ISA $socketTimeout $proxy %tagToHandler );
+@ISA = qw(HTML::Parser);
 
-# The parameters to the HandleGeneric function are:
-# - the hours of the day at which to update the data
-# - the url from which to get the data
-# - the name of the data (used in error messages and output comments)
-# - the function to use to get the data (GetLinks and GetText are good
-#   examples so far. See their comments for more info.)
-# - the code to use to filter the acquired data
-# - the code to use to output the data
-my %tagToHandler = (
-  "time" =>
-  [
-    \&HandleTime,
-  ],
-  "date" =>
-  [
-    \&HandleDate,
-  ],
-  "apnews" =>
-  [
-    \&HandleGeneric,
-    [2,5,8,11,14,17,20,23],
-    "http://dailynews.yahoo.com/headlines/top_stories/ap/index.html",
-    "AP News",
-    '&GetLinks($url,"ap_headlines","<hr")',
-    '',
-    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
-  ],
-  "slashdot" =>
-  [
-    \&HandleGeneric,
-    [2,5,8,11,14,17,20,23],
-    "http://www.slashdot.org/ultramode.txt",
-    "Slashdot Headlines",
-    '&GetText($url,"%%\n","\$")',
-    # Take the text from ultramode. Look for the two lines after %%. When you
-    # see them, push a <a href> onto @grabbedData. shift the original text
-    # from GetText off of @grabbedData. Output the list or columns based on
-    # the style.
-    '$grabbedData[0] =~ s/\%\%\n(.*?)\n(.*?)\n/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData',
-    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
-  ],
-  "freshmeat" =>
-  [
-    \&HandleGeneric,
-    [2,5,8,11,14,17,20,23],
-#    "http://files.freshmeat.net/freshmeat/recentnews.txt",
-    "ftp://ftp.freshmeat.net/pub/files/freshmeat/recentnews.txt",
-    "Freshmeat News",
-    '&GetText($url,"^","\$")',
-    # Take the plain text. Look for the first and third lines. When you
-    # see them, push a <a href> onto @grabbedData. shift the original text
-    # from GetText off of @grabbedData. Output the list or columns based on
-    # the style.
-    '$grabbedData[0] =~ s/([^\n]+)\n[^\n]+\n([^\n]+)/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData',
-    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
-  ],
-  "cnnsports" =>
-  [
-    \&HandleGeneric,
-    [2,5,8,11,14,17,20,23],
-    "http://www.cnnsi.com/",
-    "CNN/SI Sports",
-    '&GetLinks($url,"topstories","transactions")',
-    '',
-    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
-  ],
-  "wirednews" =>
-  [
-    \&HandleGeneric,
-    [2,5,8,11,14,17,20,23],
-    "http://www.wired.com/news/",
-    "Wired News",
-    '&GetLinks($url,"(?i)other top stories","(?i)----trades----")',
-    # Here I'm deleting some bogus links before outputting the results.
-    '@grabbedData = grep {!/">in/} @grabbedData',
-    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
-  ],
-  "linuxtoday" =>
-  [
-    \&HandleGeneric,
-    [2,5,8,11,14,17,20,23],
-    "http://linuxtoday.com/lthead.inc",
-    "Linux Today Headlines",
-    '&GetLinks($url,"^","\$")',
-    '',
-    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
-  ],
-  "infoworld" =>
-  [
-    \&HandleGeneric,
-    [2,5,8,11,14,17,20,23],
-    "http://www.infoworld.com/",
-    "Infoworld Top News Stories",
-    '&GetLinks($url,"(?i)merge below","(?i)merge above")',
-    '',
-    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
-  ],
-  "weather" =>
-  [
-    \&HandleWeather,
-    [5,11,16],
-    "NWS Weather",
-  ],
-  "coolsite" =>
-  [
-    \&HandleGeneric,
-    [7],
-    "http://www.cool.infi.net/frmindex.html",
-    "Cool Site of the Day",
-    '&GetText($url,"(?i)insert cool site here.*src=\"","\">")',
-    '',
-    'print <<EOF;
-<a href="$grabbedData[0]">
-<img src="http://www.cool.infi.net/images/coollogomid1.gif" border=0 width=280 height=70 alt="Today\'s Cool Site">
-</a>
-EOF
-',
-  ],
-  "uselessfact" =>
-  [
-    \&HandleGeneric,
-    [7],
-    "http://www.southhouse.com/useless/",
-    "Useless Fact of the Day",
-    '&GetText($url,"(?i)white.*arial","(?i)</font>")',
-    '',
-    'print ("$grabbedData[0]\n")',
-  ],
-  "dilbert" =>
-  [
-    \&HandleGeneric,
-    [7],
-    "http://www.unitedmedia.com/comics/dilbert/index.html",
-    "Dilbert",
-    '&GetLinks($url,"(?i)today\'s strip","(?i)</td>")',
-    '',
-    'print "  $grabbedData[0]\n"',
-  ],
-  "calvin" =>
-  [
-    \&HandleGeneric,
-    [7],
-    "http://www.uexpress.com/ups/comics/ch/",
-    "Calvin and Hobbes",
-    '&GetLinks($url,"(?i)comic strip","(?i)<br")',
-    '',
-    'print "  $grabbedData[0]\n"',
-  ],
-  "userfriendly" =>
-  [
-    \&HandleGeneric,
-    [7],
-    "http://www.userfriendly.org/static/",
-    "User Friendly",
-    '&GetLinks($url,"(?i)<hr size=\"6\">","(?i)<font")',
-    '',
-    'print "  $grabbedData[0]\n"',
-  ],
-  adam =>
-  [
-    \&HandleGeneric,
-    [7],
-    "http://www.uexpress.com/ups/comics/ad/",
-    "Adam\@Home",
-    '&GetLinks($url,"ENDxx>","</TABLE")',
-    '',
-    'print "  $grabbedData[0]\n"',
-  ],
-);
-
-# ----------------- You shouldn't modify stuff below this line -----------------
-
+# For UserAgent
 use LWP::UserAgent;
+# For timelocal
 use Time::Local;
 # For easy date/time manipulation
 use POSIX;
 
+# DEBUG for this package is the same as the main.
 use constant DEBUG => Main::DEBUG;
-
-use vars qw( @ISA );
-@ISA = qw(HTML::Parser);
 
 # ------------------------------------------------------------------------------
 
@@ -358,10 +138,10 @@ my $currentTime = time;
 my ($hour,$day,$month,$year,$wday) = (localtime($currentTime))[2..6];
 
 # If there's no old data file, we have to generate the data.
-print "<!--DEBUG:  Old output file doesn't exist.-->\n" if (DEBUG && !-e $outHtml);
-return 0 if (!-e $outHtml);
+print "<!--DEBUG:  Old output file doesn't exist.-->\n" if (DEBUG && !-e $Main::outHtml);
+return 0 if (!-e $Main::outHtml);
 
-open (OLDHTML,$outHtml) or die "Can't open output file!\n";
+open (OLDHTML,$Main::outHtml) or die "Can't open output file!\n";
 my $oldHtml = join "",<OLDHTML>;
 close (OLDHTML);
 
@@ -426,7 +206,7 @@ $userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
 my $request = new HTTP::Request GET => "$url";
 my $html = $userAgent->request($request)->content;
 
-return () if (!defined $html);
+return () if ((!defined $html) || ($html eq ""));
 
 # Strip off all the stuff before and after the start and end patterns
 $html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s
@@ -472,7 +252,7 @@ $userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
 my $request = new HTTP::Request GET => "$url";
 my $html = $userAgent->request($request)->content;
 
-return () if (!defined $html);
+return () if ((!defined $html) || ($html eq ""));
 
 # Strip off all the stuff before and after the start and end patterns
 $html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s
@@ -852,7 +632,7 @@ $userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
 my $request = new HTTP::Request GET => $attributes->{url};
 my $html = $userAgent->request($request)->content;
 
-return if !defined $html;
+return if ((!defined $html) || ($html eq ""));
 
 my ($currentWeather) = $html =~ /=====\n(.*?)\n/s;
 my ($forecast) = $html =~ /\n (\S.*?)\n\s*\n/s;
