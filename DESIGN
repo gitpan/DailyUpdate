@@ -9,24 +9,32 @@ DailyUpdate.pl: the main program. Creates a DailyUpdate::Parser to parse the
 input file and create the output.
 
 DailyUpdate::Parser: Encapsulates the parsing of the template file. Parses an
-input file, looking for a dailyupdate tag. When it sees one, it calls Create on
-a HandlerFactory object. Then it calls handle on the handler that
-HandlerFactory creates.
+input file, looking for a dailyupdate tag. When it sees one, it parses it to
+get the commands. The commands are then sent to the Interpreter.
+
+DailyUpdate::Interpreter: Receives commands from the Parser. It tries to fill
+in the default filters and output handlers as specified by the input handler,
+if necessary. It then creates a HandlerFactory object, which it uses to create
+an instance of the handler needed for each command. It then calls the
+handler's Get, Filter, or Output routine as dictated by the type of command.
 
 DailyUpdate::HandlerFactory: Encapsulates the process of finding a suitable
 handler for a given tag. Tries to load a handler for a given tag first
 locally, and then via the network (if the user okays it). It announces an
 error if it can not find one.
 
-DailyUpdate::Handler: The base class for handlers. Has a generic "new" that can
-be inherited by most handlers. Also implements "CachedDataUsable", which
-checks the old output file to see if we can reuse the old data given the
-current time and update time criteria in the configuration file. It's "Handle"
-function will work for most derived handlers, provided they replace "Get",
-"Filter" and "Output".
+DailyUpdate::Handler: The base class for handlers. Has a generic "new", Get,
+Filter, Output, and GetUpdateTimes that can be inherited by most handlers. 
 
 DailyUpdate::AcquisitionFunctions: An API of useful functions for grabbing data
-from the internet. This is used by handler writers.
+from the internet. This is used by handler writers. The base function is
+GetUrl, which talks to the cache to see if it is possible to reuse recently
+acquired HTML files.
 
-DailyUpdate::PrintFunctions: An API of useful functions for outputting data in
-various HTML styles. This is used by handler writers.
+DailyUpdate::Cache: Encapsulates the task of caching HTML files acquired by
+GetUrl.  Implements "CachedDataUsable", which checks the old output file to
+see if we can reuse the old data given the current time and update time
+criteria specified by the handler. 
+
+DailyUpdate::HTMLTools: An API of useful functions for manipulating HTML. Used
+by handler writers.

@@ -1,4 +1,4 @@
-DailyUpdate version 6.01
+DailyUpdate version 7.00
 
 Written by David Coppit (coppit@cs.virginia.edu,
   http://www.cs.virginia.edu/~dwc3q/index.html)
@@ -13,7 +13,7 @@ Send me email if you would like to be notified of updates.
 Please send me any modifications you make to the main script. (for the better,
 that is. :) Keep in mind that I'm likely to turn down obscure features to
 avoid including everything but the kitchen sink. Check out the TODO file for
-ways you can help.
+ways you can help, and DESIGN for a quick description of the major modules.
 
 If you make a nice web page using Daily Update and want to show it off, send
 me an email and I'll add it to the examples. Thanks!
@@ -22,51 +22,51 @@ me an email and I'll add it to the examples. Thanks!
 DOCUMENTATION
 
 Go to http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/index.html. Also try
-'perldoc DailyUpdate.pl'.
+'perldoc DailyUpdate.pl'. There's also a user manual that explains the command
+syntax at http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/manual.html.
 
 
 CHANGES
 
-New in version 6.02:
-- Added return values for those of you who like to use makefiles to build web
-  pages.
-- Added documentation for MakeHandler.pl.
-- Bug fixed in output columns function. (Thanks to Craig Brockmeier
-  <craig@seurat.ppco.com> for finding it.)
-- I've revamped the configuration and install procedure to make it more
-  amenable to site-wide installation. DailyUpdate.cfg is looked for in
-  ~/.DailyUpdate, and handlers are installed in the first directory specified
-  by handlerlocations in DailyUpdate.cfg. (~/.DailyUpdate by default.) You'll
-  need to fix up your handlerLocations variable if you're upgrading from a
-  previous version. (Thanks to John Goerzen <jgoerzen@complete.org> for his
-  invaluable input.)
-- Added support for proxies requiring passwords. (Thanks to Kevin D.
-  Clark <kclark@cabletron.com>.)
-- Fixed a bug in HTMLTools.pm. (Thanks to Mark Harburn
-  <Mark.Harburn@durham.ac.uk>).
+New in version 7.0: 
+- This is a major rewrite, with a new syntax and improved support for web
+  developers.
+- See the file MIGRATING for hints on how to move to the new version from
+  older versions, and how to upgrade handlers you've written.
+- None of the old handlers work. You'll have to download the new ones and
+  migrate the ones you've written yourself but haven't submitted to me.
+- Improved caching
+- New, separated input, filtering, and output commands. This means you'll have
+  to update your input files to reflect the new syntax.
+- New and improved MakeHandler.pl
+- -v for verbose output
+- Added StripAttributes HTMLsubstr TrimOpenTags functions to HTMLTools.
+- Added day of the week and timezone support to handler update times.
+- New web support for browsing handlers
+- Daily Update mailing list
+- Now Daily Update prints a message if it times out.
+- When a handler fails, a comment is inserted in the output instead of
+  printing it to visible HTML.
+- Miscellaneous bug fixes
+- Miscellaneous bugs introduced. :) (I reworked a lot of the code.)
 
-New in version 6.01: 
-- Added -r switch to force proxies to reload cached data during data
-  acquisition. (Thanks to Gerhard Wiesinger <e9125884@student.tuwien.ac.at>)
-- Fixed a couple of minor bugs.
-- Improved installation to automatically set #! line and set INSTALLDIRECTORY
-  in DailyUpdate.pl.
-- Configuration doesn't have to be in the same directory as the DailyUpdate.pl
-  file. (You can leave the DailyUpdate.cfg file in the install directory, and
-  move the DailyUpdate.pl file wherever you want, like cgi-bin.)
-- During automatic installation, handlers are now put in the install
-  directory, not the directory of the currently running DailyUpdate.pl script.
+Acknowledgements:
+The main acknowledgement goes to Rob Saunders (rob@arch.usyd.edu.au), whose
+invaluable feedback helped develop the new syntax and "handler philosophy".
+Thanks also to Leonard D. Richardson (leonardr@ucla.edu) for suggesting the
+addition of timezones. I feel like I'm forgetting someone. Sorry if it's you.
 
 
 PREREQUISITES
 
 You will need Perl version 5.004 or newer. In addition, Daily Update uses the
-libwww library (LWP), URI (NOT URI::URL!), HTML-Tree, and HTML::Parser. You
-can download these packages with the following URLs:
+libwww library (LWP), URI (NOT URI::URL!), HTML-Tree, HTML::Parser, and
+Date::Manip. You can download these packages with the following URLs:
 http://www.perl.com/CPAN/modules/by-module/LWP/libwww-perl-5.41.tar.gz
 http://www.perl.com/CPAN/modules/by-module/URI/URI-1.00.tar.gz
 http://www.perl.com/CPAN/modules/by-module/HTML/HTML-Tree-0.51.tar.gz
 http://www.perl.com/CPAN/modules/by-module/HTML/HTML-Parser-2.22.tar.gz
+http://www.perl.com/CPAN/modules/by-module/Date/DateManip-5.33.tar.gz
 
 
 INSTALLATION
@@ -97,13 +97,17 @@ perl Makefile.PL INSTALLDIRS=perl PREFIX=/path INSTALLMAN1DIR=/path/man/man1
 make
 make pure_perl_install DailyUpdate_Cleanup
 
-Add /path/lib/perl5 to your PERL5LIB environment variable, using something
-like:
+Add /path/lib/perl5 to your PERL5LIB environment variable, either temporarily
+at the command line, or permanently in your .profile. Use something like:
 set PERL5LIB=$PERL5LIB:/path/lib/perl5;export PERL5LIB
 
 You'll have to manually move the man file from the install directory to your
 favorite man location, or set your MANPATH to include the install directory's
 man subdirectory.
+
+Also, if you run this version using crontab, you'll have to tell perl where to
+find the modules, since they will be in a nonstandard location:
+perl -I/path/lib/perl5 /path/bin/DailyUpdate.pl
 
 - General information
 

@@ -3,6 +3,14 @@ to do in future versions of DailyUpdate, and to give you an idea of what you
 can help me implement. :) The more help I get, the faster these ideas will be
 implemented. Also, if you have any thoughts on these, please let me know.
 
+- Make a handler validation service to help people write good handlers.
+- Need to fix handler download to prevent installation of handlers that don't
+  work with older versions of Daily Update.
+- Support for servers that require htaccess authentication
+- SOCKS support
+- Fix the database to be able to search multiple fields for the same string.
+  (Especially created & modified together.) Have a report of the newest X
+  handlers on the handlers page.
 - Fix the #! for Win32 installations.
 - Figure out how to do chmod in the Makefile.PL so that everything isn't
   read-only. (Works for Unix, but not Windows.)
@@ -17,9 +25,11 @@ implemented. Also, if you have any thoughts on these, please let me know.
   syntax tree for the output HTML.
 - Cache the web pages locally for faster access and off-line reading. This
   pushes Daily Update into the realm of agents, which I'm not sure I want to
-  venture into...
+  venture into... (However, it would not be difficult to adapt cacheimages to
+  make a cachelinks filter.)
 - Implement support for last modified checks based on web server information.
 - Write a handler to interface DU to local information stored in databases.
-- Fix the handlers page to support "what's new", web-based submission,
-  searching, etc.
-- Write a handler to check for new handlers. :)
+- Allow alternative means of using Daily Update for people who don't have
+  shell and Perl access. Rob Saunders suggested FTP support so DU would FTP
+  its output to the user's "free" account. Along those same lines, one could
+  build a customizable information website using DU as the back-end.

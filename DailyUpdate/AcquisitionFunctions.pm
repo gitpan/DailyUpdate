@@ -17,61 +17,134 @@ use vars qw( @ISA @EXPORT_OK $VERSION );
 @ISA = qw( Exporter );
 @EXPORT_OK = qw( GetUrl GetHtml GetImages GetLinks GetText);
 
-$VERSION = 0.4;
+$VERSION = 0.5;
 
 # DEBUG for this package is the same as the main.
 use constant DEBUG => main::DEBUG;
 
 # ------------------------------------------------------------------------------
 
-# Gets the entire content from a URL. file:// supported
+# I wish there was a way to get the actual reference to the calling object, so
+# we don't have to create a temporary.
+sub _GetUpdateTimes
+{
+  # Walk up the call chain until we find who called us
+  my $callersClass = undef;
+  my $depth = 0;
+  do
+  {
+    my $tempCaller = (caller($depth))[0];
+    $callersClass = $tempCaller if $tempCaller =~ /Handler/;
+    $depth++;
+  } until defined $callersClass;
+
+  my $tempHandler = "$callersClass"->new;
+
+  my ($baseTagName) = $callersClass =~ /^(\S*)/;
+
+  my @updateTimes = @{$tempHandler->GetUpdateTimes};
+
+  if (DEBUG)
+  {
+    my $temp = $";
+    $" = ',';
+    print "<!--DEBUG: Update times are: @updateTimes -->\n";
+    $" = $temp;
+  }
+
+  return @updateTimes;
+}
+
+# ------------------------------------------------------------------------------
+
+# Gets the entire content from a URL. This function *does not* escape & < and
+# >. Use "GetHtml($url,'^','$')" if you wan this behavior.
 sub GetUrl
 {
   my $url = shift;
 
-  print "<!-- DEBUG: GetUrl is getting URL: $url -->\n" if (DEBUG);
+  print "<!--DEBUG: GetUrl is getting URL: $url -->\n" if DEBUG;
 
-  if ($url =~ /^file:\/\/(.*)/i)
+  # Try to get the cached data if it's available and still valid
+  my @updateTimes = _GetUpdateTimes();
+
+  # If the user specified "always", there's no need to check the time.
+  print "<!--DEBUG: \"Always\" specified. Skipping cache check.-->\n"
+    if DEBUG && lc($updateTimes[0]) eq 'always';
+
+  require DailyUpdate::Cache;
+  my $cache = DailyUpdate::Cache->new;
+
+  my $alreadyTriedCache = 0;
+
+  if (lc($updateTimes[0]) ne 'always')
   {
-    open INFILE, $1;
-    my $content = join '',<INFILE>;
-    close INFILE;
-    return \$content;
+    my $data = $cache->GetData($url,@updateTimes);
+    return \$data if defined $data;
+    $alreadyTriedCache = 1;
   }
-  else
+
+
+  # Otherwise we'll have to fetch it.
+  my $userAgent = new LWP::UserAgent;
+
+  $userAgent->timeout($main::config{socketTimeout});
+  $userAgent->proxy(['http', 'ftp'], $main::config{proxy})
+    if $main::config{proxy} ne '';
+  my $request = new HTTP::Request GET => "$url";
+
+  # Reload content if the user wants it
+  $request->push_header("Pragma" => "no-cache") if exists $main::opts{r};
+
+  if ($main::config{proxy_username} ne '')
   {
-    my $userAgent = new LWP::UserAgent;
+    $request->proxy_authorization_basic($main::config{proxy_username},
+                     $main::config{proxy_password});
+  }
 
-    $userAgent->timeout($main::config{socketTimeout});
-    $userAgent->proxy(['http', 'ftp'], $main::config{proxy})
-      if $main::config{proxy} ne '';
-    my $request = new HTTP::Request GET => "$url";
-    # Reload content if the user wants it
-    $request->push_header("Pragma" => "no-cache") if exists $main::opts{r};
+  my $result = $userAgent->request($request);
+  if (!$result->is_success)
+  {
+    print "<!--Daily Update message:\n",
+          "Couldn't get data. Error on HTTP request: ".$result->message.".\n",
+          "-->\n"
+      if defined $result;
 
-    if ($main::config{proxy_username} ne '')
+    my $data;
+    # Try to get the old data from the cache
+    if ($alreadyTriedCache)
     {
-      $request->proxy_authorization_basic($main::config{proxy_username},
-                       $main::config{proxy_password});
+      $data = undef;
+    }
+    else
+    {
+      $data = $cache->GetData($url,@updateTimes);
     }
 
-    my $result = $userAgent->request($request);
 
-    if (!$result->is_success)
-    {
-      # Don't change "Couldn't". It's used by CachedDataUsable
-      print "Couldn't get data. Error on HTTP request: ".$result->message.".\n"
-        if (defined $result);
-      return;
-    }
+    print "<!--DEBUG: Using cached data -->\n"
+      if DEBUG and defined $data;
 
-    my $content = $result->content;
+    return \$data if defined $data;
 
-    # Strip linefeeds off the lines
-    $content =~ s/\r//gs;
 
-    return \$content;
+    print "<!--Daily Update message:\n",
+          "HTTP request failed, and there is no cached data available.\n",
+          "-->\n";
+
+    return undef;
   }
+
+  my $content = $result->content;
+
+  # Strip linefeeds off the lines
+  $content =~ s/\r//gs;
+
+
+  # Cache it for later use unless it's an "always"
+  $cache->CacheData($url,$content) if lc($updateTimes[0]) ne 'always';
+
+  return \$content;
 }
 
 # ------------------------------------------------------------------------------
@@ -82,9 +155,9 @@ sub GetText
 {
   my ($url,$startPattern,$endPattern) = @_;
 
-  my $html = &GetUrl($url);
+  my $html = GetUrl($url);
 
-  return if !defined $html;
+  return unless defined $html;
 
   $html = $$html;
 
@@ -95,6 +168,10 @@ sub GetText
   $html =~ s/^[^<]*>//s;
   $html =~ s/<[^>]*$//s;
 
+  # FormatText seems to have a problem with &nbsp;
+  $html =~ s/&nbsp;/ /sg;
+
+  # Convert to text
   require HTML::FormatText;
   require HTML::TreeBuilder;
 
@@ -103,9 +180,7 @@ sub GetText
   $html =~ s/\n*$//sg;
 
   # Escape HTML characters
-  $html =~ s/&/&amp;/sg;
-  $html =~ s/</&lt;/sg;
-  $html =~ s/>/&gt;/sg;
+  $html = EscapeHTMLChars($html);
 
   if ($html ne '')
   {
@@ -129,7 +204,7 @@ sub GetHtml
 
   my $html = &GetUrl($url);
 
-  return if !defined $html;
+  return unless defined $html;
 
   $html = $$html;
 
@@ -160,23 +235,32 @@ sub GetImages
 
   my $html = &GetUrl($url);
 
-  return if !defined $html;
+  return unless defined $html;
 
   $html = $$html;
 
   # Strip off all the stuff before and after the start and end patterns
   $html = &ExtractText($html,$startPattern,$endPattern);
 
+  require HTML::TreeBuilder;
+  my $tree = HTML::TreeBuilder->new;
+  $tree->parse($html);
+
   my @imgTags;
 
-  # See if there's a <img...> on this line
-  while ($html =~ /(<img .*?>)/sgci)
+  foreach my $linkpair (@{$tree->extract_links('img')})
   {
-    my $imgTag = $1;
+    # Extract the link from the HTML element.
+    my $elem = ${$linkpair}[1];
+    my $link = $elem->as_HTML();
+    chomp $link;
+
+    # Remove any formatting
+    $link = StripTags($link);
 
     # change relative tags to absolute
-    $imgTag = &MakeLinksAbsolute($url,$imgTag);
-    push @imgTags,$imgTag;
+    $link = &MakeLinksAbsolute($url,$link);
+    push @imgTags, $link;
   }
 
   if ($#imgTags != -1)
@@ -203,27 +287,32 @@ sub GetLinks
 
   my $html = &GetUrl($url);
 
-  return if !defined $html;
+  return unless defined $html;
 
   $html = $$html;
 
   # Strip off all the stuff before and after the start and end patterns
   $html = &ExtractText($html,$startPattern,$endPattern);
 
+  require HTML::TreeBuilder;
+  my $tree = HTML::TreeBuilder->new;
+  $tree->parse($html);
+
   my @links;
 
-  # See if there's a link on this line
-  while ($html =~ /(< *a[^>]*\bhref\b[^>]*>.*?<\/a>)/sgci)
+  foreach my $linkpair (@{$tree->extract_links('a')})
   {
-    my $link = $1;
+    # Extract the link from the HTML element.
+    my $elem = ${$linkpair}[1];
+    my $link = $elem->as_HTML();
+    chomp $link;
 
     # Remove any formatting
     $link = StripTags($link);
 
     # change relative tags to absolute
     $link = &MakeLinksAbsolute($url,$link);
-
-    push @links,$link;
+    push @links, $link;
   }
 
   if ($#links != -1)

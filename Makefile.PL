@@ -2,18 +2,56 @@
 
 use strict;
 
-my $home;
+my ($home,$timezone);
+
 if (($^O eq 'dos') || ($^O eq 'MSWin32'))
 {
-  print "Hey, you're on a DOS or Windows system. You'll need to specify a path where\n";
-  print "Daily Update can look for configuration information. (This would normally\n";
-  print "be ~ on Unix-like systems, but you don't have $ENV{HOME} defined.)\n";
-  print "Be sure to use /, not \\.\n";
+  print<<EOT;
+Hey, you're on a DOS or Windows system. You'll need to specify a path where
+Daily Update can look for configuration information, if it can't find your
+HOME environment variable. 
+Be sure to use /, not \\.
+EOT
+
   print "=> [C:/DailyUpdate] ";
   $home = <STDIN>;
   $home = "C:/DailyUpdate\n" if $home eq "\n";
   chomp $home;
+
+  print<<EOT;
+
+Also, you need to tell me what time zone you are in, because Date::Manip won't
+be able to figure it out from your OS.  In the US, they are of the form PST,
+CST, EST. See "perldoc Date::Manip" for a complete list.
+EOT
+
+  print "=> [PST] ";
+  $timezone = <STDIN>;
+  $timezone = "PST\n" if $timezone eq "\n";
+  chomp $timezone;
 }
+
+# ------------------------------------------------------------------------------
+
+my $prefix = undef;
+
+if (grep {/INSTALLDIRS=perl/} @ARGV)
+{
+  $prefix = (grep {/PREFIX/} @ARGV)[0];
+
+  $prefix =~ s/PREFIX=//;
+
+  print<<EOT;
+
+It looks like you're doing a single-user installation, as opposed to a
+system-wide installation. I'm going to set modulepath in DailyUpdate.cfg to
+point to \$INSTALLPRIVLIB. This is so that you don't have to change your
+PERL5LIB variable, or run Daily Update using "perl -I".
+
+EOT
+}
+
+# ------------------------------------------------------------------------------
 
 my $sysconfigdir;
 print "Where would you like to install the system-wide configuration file\n";
@@ -30,6 +68,8 @@ print "=> [$sysconfigdir] ";
 my $input = <STDIN>;
 chomp $input;
 $sysconfigdir = $input if $input ne '';
+
+# ------------------------------------------------------------------------------
 
 use ExtUtils::MakeMaker;
 
@@ -48,19 +88,46 @@ WriteMakefile(
   'PM' => {
     'DailyUpdate/AcquisitionFunctions.pm' =>
         '$(INST_LIBDIR)/DailyUpdate/AcquisitionFunctions.pm',
-    'DailyUpdate/Handler.pm', =>
+    'DailyUpdate/Handler.pm' =>
         '$(INST_LIBDIR)/DailyUpdate/Handler.pm',
-    'DailyUpdate/HTMLTools.pm', =>
+    'DailyUpdate/HTMLTools.pm' =>
         '$(INST_LIBDIR)/DailyUpdate/HTMLTools.pm',
-    'DailyUpdate/HandlerFactory.pm', =>
+    'DailyUpdate/HandlerFactory.pm' =>
         '$(INST_LIBDIR)/DailyUpdate/HandlerFactory.pm',
-    'DailyUpdate/OutputFunctions.pm', =>
-        '$(INST_LIBDIR)/DailyUpdate/OutputFunctions.pm',
-    'DailyUpdate/Parser.pm', =>
+    'DailyUpdate/Interpreter.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Interpreter.pm',
+    'DailyUpdate/Cache.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Cache.pm',
+    'DailyUpdate/Parser.pm' =>
         '$(INST_LIBDIR)/DailyUpdate/Parser.pm',
+
+    'DailyUpdate/Handler/Filter/cacheimages.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Filter/cacheimages.pm',
+    'DailyUpdate/Handler/Filter/grep.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Filter/grep.pm',
+    'DailyUpdate/Handler/Filter/hash2array.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Filter/hash2array.pm',
+    'DailyUpdate/Handler/Filter/highlight.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Filter/highlight.pm',
+    'DailyUpdate/Handler/Filter/limit.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Filter/limit.pm',
+    'DailyUpdate/Handler/Filter/map.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Filter/map.pm',
+    'DailyUpdate/Handler/Filter/selectkeys.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Filter/selectkeys.pm',
+
+    'DailyUpdate/Handler/Output/array.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Output/array.pm',
+    'DailyUpdate/Handler/Output/string.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Output/string.pm',
+    'DailyUpdate/Handler/Output/table.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Output/table.pm',
+    'DailyUpdate/Handler/Output/thread.pm' =>
+        '$(INST_LIBDIR)/DailyUpdate/Handler/Output/thread.pm',
   },
   'EXE_FILES' => [ 'DailyUpdate.pl', 'MakeHandler.pl', ],
   'PREREQ_PM' => { 'HTML::Parser' => 2.06, 'HTML::FormatText' => 0,
+                   'Date::Manip' => 0,
                    'HTML::TreeBuilder' => 0, 'URI' => 1.0, 'LWP' => 5.15},
 );
 
@@ -110,13 +177,22 @@ EOT
 ;
 }
 
+if (defined $prefix)
+{
+  $returnText .=<<EOT;
+	\@echo '  Setting modulepath in DailyUpdate.cfg...'
+	\@perl -ibak -pe "s|'modulepath' => '.*'|'modulepath' => '\$(INSTALLPRIVLIB)'|" $sysconfigdir/DailyUpdate.cfg
+EOT
+}
+
 if (($^O eq 'dos') || ($^O eq 'MSWin32'))
 {
-  $returnText .=<<EOT
+  $returnText .=<<EOT;
 	\@echo '  Setting \$\$ENV{HOME} in DailyUpdate.pl...'
-	\@perl -ibak -pe "s|^  # \\\$\$ENV.HOME.*;|  \\\$\$ENV\\173HOME\\175 = '$home';|" \$(INSTALLSCRIPT)/DailyUpdate.pl
+	\@perl -ibak -pe "s|^  \\\$\$home = '.*'|  \\\$\$home = '$home'|" \$(INSTALLSCRIPT)/DailyUpdate.pl
+	\@echo '  Setting \$\$ENV{TZ} in DailyUpdate.cfg...'
+	\@perl -ibak -pe "s|^\\\$\$ENV.TZ.*if |\\\$\$ENV\\173TZ\\175 = '$timezone' if |" \$(INSTALLSCRIPT)/DailyUpdate.cfg
 EOT
-;
 }
 
 return $returnText;

@@ -16,7 +16,18 @@ DailyUpdate/HTMLTools.pm              A module containing useful HTML
 DailyUpdate/HandlerFactory.pm         Encapsulates the task of locating,
                                         locally or remotely, a handler for a
                                         Daily Update tag.
-DailyUpdate/OutputFunctions.pm        A module containing useful output
-                                        functions, used by handlers.
+DailyUpdate/Cache.pm                  Implements the Daily Update cache
 DailyUpdate/Parser.pm                 Daily Update's parser for
                                         <!--dailyupdate...--> tags
+DailyUpdate/Interpreter.pm            Executes Daily Update commands
+DailyUpdate/Handler/Filter/cacheimages.pm
+DailyUpdate/Handler/Filter/grep.pm
+DailyUpdate/Handler/Filter/hash2array.pm
+DailyUpdate/Handler/Filter/highlight.pm
+DailyUpdate/Handler/Filter/limit.pm
+DailyUpdate/Handler/Filter/map.pm
+DailyUpdate/Handler/Filter/selectkeys.pm
+DailyUpdate/Handler/Output/array.pm
+DailyUpdate/Handler/Output/string.pm
+DailyUpdate/Handler/Output/table.pm
+DailyUpdate/Handler/Output/thread.pm

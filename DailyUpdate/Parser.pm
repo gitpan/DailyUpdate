@@ -41,12 +41,31 @@ sub start
 
   my ($tag, $attributeList) = @_;
 
-  if (lc($tag) eq 'dailyupdate')
+  # Make sure all the attributes are lower case
+  foreach my $attribute (keys %$attributeList)
   {
-    print "<!--DEBUG: Found Daily Update tag -->\n" if DEBUG;
-    $DailyUpdate::Parser::_attributeList = $attributeList;
+    if (lc($attribute) ne $attribute)
+    {
+      $attributeList->{lc($attribute)} = $attributeList->{$attribute};
+      delete $attributeList->{$attribute};
+    }
   }
 
+  print "<!--Daily Update message:\n",
+        "A Daily Update command must have a \"name\" attribute.\n",
+        "-->\n" and return
+    unless defined $attributeList->{name};
+
+  if ($tag =~ /(input|filter|output)/)
+  {
+    push @DailyUpdate::Parser::_commandList,[$tag,$attributeList];
+  }
+  else
+  {
+    print "<!--Daily Update message:\n",
+          "Invalid Daily Update command '$tag' seen in input file.\n",
+          "-->\n";
+  }
 }
 
 ################################################################################
@@ -54,28 +73,24 @@ sub start
 package DailyUpdate::Parser;
 
 # This package contains a parser for Daily Update "enabled" HTML files. It
-# basically passes all tags except ones like <!--dailyupdate name=...-->,
-# which are converted to information gathered from the net.
+# basically passes all tags except ones like <!--dailyupdate ...-->, which are
+# parsed for commands which are then executed.
 
 use strict;
 use HTML::Parser;
-use DailyUpdate::HandlerFactory;
 
-use vars qw( @ISA $VERSION $_attributeList );
+use vars qw( @ISA $VERSION $_commandList );
 @ISA = qw(HTML::Parser);
 
-# The latter two are used to allow the callback to communicate to the comment
-# handler.
-my $_attributeList;
+# The little parser above fills this with parsed commands.
+my @_commandList;
 
-$VERSION = 0.3;
+$VERSION = 0.4;
 
 # DEBUG for this package is the same as the main.
 use constant DEBUG => main::DEBUG;
 
 # ------------------------------------------------------------------------------
-
-my $handlerFactory = DailyUpdate::HandlerFactory->new;
 
 sub new
 {
@@ -87,9 +102,6 @@ sub new
 
   # Create an "object"
   my $self = {};
-
-  # Store a reference to the "private" class-wide data
-  $self->{_handlerFactory} = \$handlerFactory;
 
   # Make the object a member of the class
   bless ($self, $class);
@@ -112,33 +124,27 @@ sub comment
   my $self = shift @_;
   my $originalText = pop @_;
 
-  # Parse the comment as a tag.
-  $DailyUpdate::Parser::_attributeList = undef;
-  my $p = new DailyUpdate::Parser::_TagParser;
-  $p->parse("<$originalText>");
-  
-  # Make local copy of _attributeList
-  my $attributeList = $DailyUpdate::Parser::_attributeList;
-
-  if (defined $attributeList)
+  if ($originalText =~ /^\s*dailyupdate\b/is)
   {
-    warn "A dailyupdate tag must have a \"name\" attribute\n"
-      unless exists $attributeList->{name};
+    print "<!--DEBUG: Found dailyupdate tag -->\n" if DEBUG;
 
-    # Ask the HandlerFactory to create a handler for us, based on the name.
-    my $handler = ${$self->{_handlerFactory}}->Create($attributeList->{name});
+    # Take off the dailyupdate stuff
+    my ($commandText) = $originalText =~ /^\s*dailyupdate\s*(.*)\s*$/is;
 
-    if (defined $handler)
-    {
-      delete $attributeList->{name};
 
-      # Now have the handler handle it!
-      $handler->Handle($attributeList);
-    }
-    else
-    {
-      print $originalText;
-    }
+    # Clear out the old commands, if there are any
+    undef @DailyUpdate::Parser::_commandList;
+
+    # Get the commands
+    my $parser = new DailyUpdate::Parser::_TagParser;
+    $parser->parse($commandText);
+
+
+    # Now execute the commands
+    require DailyUpdate::Interpreter;
+    my $interpreter = new DailyUpdate::Interpreter;
+
+    $interpreter->Execute(@DailyUpdate::Parser::_commandList);
   }
   # If it's not a special tag, just print it out.
   else

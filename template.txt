@@ -27,44 +27,87 @@ yourself.
 <h3>Associated Press News</h3>
 
 <p>
-  &lt;!--dailyupdate name=apnews style=twocolumn--&gt;<br>
-  <!--dailyupdate name=apnews style=twocolumn-->
+<pre>
+&lt;!--dailyupdate
+  &lt;input name=apnews&gt;
+--&gt;
+</pre>
+<!--dailyupdate
+  <input name=apnews>
+-->
 </p>
 
 <h3>Yahoo Stock Market Indices</h3>
 
 <p>
-  &lt;!--dailyupdate name=yahoostockindices--&gt;
-  <!--dailyupdate name=yahoostockindices-->
+<pre>
+&lt;!--dailyupdate
+  &lt;input name=yahoostockindices&gt;
+--&gt;
+</pre>
+<!--dailyupdate
+  <input name=yahoostockindices>
+-->
 </p>
 
 <h3>Slashdot Headlines</h3>
 
 <p>
-  &lt;!--dailyupdate name=slashdot style=twocolumn--&gt;
-  <!--dailyupdate name=slashdot style=twocolumn-->
+<pre>
+&lt;!-- dailyupdate
+  &lt;input name=slashdot type=articles&gt;
+  &lt;filter name=slashdot type=LinksAndText&gt;
+  &lt;filter name=limit number=4&gt;
+  &lt;filter name=map filter=limit number=200 chars&gt;
+  &lt;output name=array numcols=2 prefix="&lt;p&gt;-&amp;gt;" suffix="&lt;/p&gt;"&gt;
+--&gt;
+</pre>
+<!-- dailyupdate
+ <input name=slashdot type=articles>
+ <filter name=slashdot type=LinksAndText>
+ <filter name=limit number=4>
+ <filter name=map filter=limit number=200 chars>
+ <output name=array numcols=2 prefix="<p>-&gt;" suffix="</p>">
+-->
 </p>
 
 <h3>Dilbert Comic</h3>
 
 <p>
-  &lt;!--dailyupdate name=dilbert--&gt;<br>
-  <!--dailyupdate name=dilbert-->
+<pre>
+&lt;!--dailyupdate
+  &lt;input name=dilbert&gt;
+--&gt;
+</pre>
+<!--dailyupdate
+  <input name=dilbert>
+-->
 </p>
 
 <h3>Freshmeat Headlines</h3>
 
 <p>
-  &lt;!--dailyupdate name=freshmeat--&gt;<br>
-  <!--dailyupdate name=freshmeat-->
+<pre>
+&lt;!--dailyupdate
+  &lt;input name=freshmeat&gt;
+--&gt;
+</pre>
+<!--dailyupdate
+  <input name=freshmeat>
+-->
 </p>
 
 <h3>Charlottesville Weather</h3>
 
 <p>
-  &lt;!--dailyupdate name=weather
-  url="http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt"--&gt;<br>
-  <!--dailyupdate name=weather url="http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt"-->
+<pre>
+&lt;!--dailyupdate
+  &lt;input name=weather city=charlottesville&gt;
+--&gt;
+</pre>
+<!--dailyupdate
+  <input name=weather city=charlottesville>
+-->
 </p>
 
 </body>
