@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# Daily Update, Version 4.2
+# Daily Update, Version 4.3
 
 # DailyUpdate grabs dynamic information from the internet and integrates it
 # into your webpage. Features:
@@ -12,8 +12,10 @@
 
 # For documentation, go to http://www.cs.virginia.edu/~dwc3q/code/update.html
 
-# This code uses LWP::UserAgent and HTML::Parser from the libwww library,
-# available on CPAN at %CPAN%/modules/by-module/LWP/.
+# This code uses LWP::UserAgent from the libwww library, URI::URL, and
+# HTML::Parser, all of which are available on CPAN at
+# %CPAN%/modules/by-module/LWP/. (Go to http://www.perl.com/ if you don't know
+# how to get to CPAN.)
 
 # I suggest using wwwis by Alex Knowles if your file contains a lot of images,
 # which can slow down viewing time on browsers. His script, at
@@ -50,6 +52,13 @@
 # http://www.opensource.org/gpl-license.html and http://www.opensource.org/.
 
 # Version History (major changes only)
+
+# 4.3 Added Infoworld, changed date & time functions to take any valid
+#     strftime format string, changed CoolSite to use their logo, changed to
+#     only dump to screen if called as a cgi script, and added url attribute
+#     to weather (all thanks to jbeimler@co-op.com). Added default values to
+#     date, time, and OutputListOrColumns. Made NWS url a mandatory attribute
+#     to weather.  Added Adam@Home comic.
 # 4.2 Added Linux Today.  Modified GetText & GetLinks to take "^" and "\$"
 #     signifying start and end of file. Added proxy support. (Thanks to Meng
 #     Kuan <mkchew@mas.gov.sg>) Fork is now disabled on Windows platforms.
@@ -71,31 +80,36 @@
 # <freshmeat style=X> Freshmeat news. Styles:
 #   unorderedlist = Bulletted list
 #   twocolumn = Two column table
-# <calvin> Calvin and Hobbes comic image link
-# <userfriendly> User Friendly comic image link
-# <dilbert> Dilbert comic image link
+# <linuxtoday style=X> Linux Today headlines. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
+# <infoworld style=X> Infoworld headlines. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
 # <date style=X> Styles:
-#   day = Wednesday, November 7
+#   day = Wednesday, November 7 (default)
 #   numeric = 951107
 #   long = November 7, 1995
+#   any other valid strftime value (see man strftime 3)
 # <time style=X> Styles:
 #   twentyfour = 14:17:59
-#   twelve = 2:17:59 PM
-# <weather>
+#   twelve = 2:17:59 PM (default)
+# <weather url=X> Url is the NWS text file for your city.
 # <apnews style=X> AP News from Yahoo. Styles:
-#   unorderedlist = Bulletted list
+#   unorderedlist = Bulletted list (default)
 #   twocolumn = Two column table
 # <coolsite> Cool Site of the day.
 # <uselessfact> Useless Fact of the day.
 # <cnnsports style=X> CNN/Sports Illustrated sports headlines. Styles:
-#   unorderedlist = Bulletted list
+#   unorderedlist = Bulletted list (default)
 #   twocolumn = Two column table
 # <wirednews style=X> Wired headlines. Styles:
-#   unorderedlist = Bulletted list
+#   unorderedlist = Bulletted list (default)
 #   twocolumn = Two column table
-# <linuxtoday style=X> Linux Today headlines. Styles:
-#   unorderedlist = Bulletted list
-#   twocolumn = Two column table
+# <calvin> Calvin and Hobbes comic image link
+# <userfriendly> User Friendly comic image link
+# <dilbert> Dilbert comic image link
+# <adam> Adam@Home comic image link
 
 require 5.001;
 use strict;
@@ -118,9 +132,7 @@ use vars qw( *OLDOUT );
 # Set $proxy if you use a proxy.
 my $proxy = "";
 
-# $socketTimeout is the length of time to allow any particular web service to
-#   respond.
-# $scripttimeout is the length of time to allow DailyUpdate to run.
+# $inHtml is your template file. $outHtml is the resulting output file
 
 my ($inHtml,$outHtml);
 if (DEBUG)
@@ -133,6 +145,10 @@ else
   $inHtml = "/users/dwc3q/public_html/cgi-bin/template.html";
   $outHtml = "/users/dwc3q/public_html/daily.html";
 }
+
+# $socketTimeout is the length of time to allow any particular web service to
+#   respond.
+# $scripttimeout is the length of time to allow DailyUpdate to run.
 
 my $socketTimeout = 60;
 my $scriptTimeout = 240;
@@ -149,7 +165,8 @@ package dailyUpdateParser;
 # - the name of the data (used in error messages and output comments)
 # - the function to use to get the data (GetLinks and GetText are good
 #   examples so far. See their comments for more info.)
-# - the function to use to output the data
+# - the code to use to filter the acquired data
+# - the code to use to output the data
 my %tagToHandler = (
   "time" =>
   [
@@ -166,34 +183,8 @@ my %tagToHandler = (
     "http://dailynews.yahoo.com/headlines/top_stories/ap/index.html",
     "AP News",
     '&GetLinks($url,"ap_headlines","<hr")',
+    '',
     '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
-  ],
-  "dilbert" =>
-  [
-    \&HandleGeneric,
-    [7],
-    "http://www.unitedmedia.com/comics/dilbert/index.html",
-    "Dilbert",
-    '&GetLinks($url,"(?i)today\'s strip","(?i)</td>")',
-    'print "  $grabbedData[0]\n"',
-  ],
-  "calvin" =>
-  [
-    \&HandleGeneric,
-    [7],
-    "http://www.uexpress.com/ups/comics/ch/",
-    "Calvin and Hobbes",
-    '&GetLinks($url,"(?i)comic strip","(?i)<br")',
-    'print "  $grabbedData[0]\n"',
-  ],
-  "userfriendly" =>
-  [
-    \&HandleGeneric,
-    [7],
-    "http://www.userfriendly.org/static/",
-    "User Friendly",
-    '&GetLinks($url,"(?i)<hr size=\"6\">","(?i)<font")',
-    'print "  $grabbedData[0]\n"',
   ],
   "slashdot" =>
   [
@@ -206,7 +197,8 @@ my %tagToHandler = (
     # see them, push a <a href> onto @grabbedData. shift the original text
     # from GetText off of @grabbedData. Output the list or columns based on
     # the style.
-    '$grabbedData[0] =~ s/\%\%\n(.*?)\n(.*?)\n/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData;&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+    '$grabbedData[0] =~ s/\%\%\n(.*?)\n(.*?)\n/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData',
+    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
   ],
   "freshmeat" =>
   [
@@ -220,7 +212,8 @@ my %tagToHandler = (
     # see them, push a <a href> onto @grabbedData. shift the original text
     # from GetText off of @grabbedData. Output the list or columns based on
     # the style.
-    '$grabbedData[0] =~ s/([^\n]+)\n[^\n]+\n([^\n]+)/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData;&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+    '$grabbedData[0] =~ s/([^\n]+)\n[^\n]+\n([^\n]+)/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData',
+    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
   ],
   "cnnsports" =>
   [
@@ -229,15 +222,7 @@ my %tagToHandler = (
     "http://www.cnnsi.com/",
     "CNN/SI Sports",
     '&GetLinks($url,"topstories","transactions")',
-    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
-  ],
-  "linuxtoday" =>
-  [
-    \&HandleGeneric,
-    [2,5,8,11,14,17,20,23],
-    "http://linuxtoday.com/lthead.inc",
-    "Linux Today Headlines",
-    '&GetLinks($url,"^","\$")',
+    '',
     '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
   ],
   "wirednews" =>
@@ -248,13 +233,33 @@ my %tagToHandler = (
     "Wired News",
     '&GetLinks($url,"(?i)other top stories","(?i)----trades----")',
     # Here I'm deleting some bogus links before outputting the results.
-    '@grabbedData = grep {!/">in/} @grabbedData;&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+    '@grabbedData = grep {!/">in/} @grabbedData',
+    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+  ],
+  "linuxtoday" =>
+  [
+    \&HandleGeneric,
+    [2,5,8,11,14,17,20,23],
+    "http://linuxtoday.com/lthead.inc",
+    "Linux Today Headlines",
+    '&GetLinks($url,"^","\$")',
+    '',
+    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+  ],
+  "infoworld" =>
+  [
+    \&HandleGeneric,
+    [2,5,8,11,14,17,20,23],
+    "http://www.infoworld.com/",
+    "Infoworld Top News Stories",
+    '&GetLinks($url,"(?i)merge below","(?i)merge above")',
+    '',
+    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
   ],
   "weather" =>
   [
     \&HandleWeather,
     [5,11,16],
-    "http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt",
     "NWS Weather",
   ],
   "coolsite" =>
@@ -264,9 +269,10 @@ my %tagToHandler = (
     "http://www.cool.infi.net/frmindex.html",
     "Cool Site of the Day",
     '&GetText($url,"(?i)insert cool site here.*src=\"","\">")',
+    '',
     'print <<EOF;
 <a href="$grabbedData[0]">
-<img src="http://www.cs.virginia.edu/~dwc3q/images/coolsite.gif" border=0 width=199 height=26 alt="Today\'s Cool Site">
+<img src="http://www.cool.infi.net/images/coollogomid1.gif" border=0 width=280 height=70 alt="Today\'s Cool Site">
 </a>
 EOF
 ',
@@ -278,7 +284,48 @@ EOF
     "http://www.southhouse.com/useless/",
     "Useless Fact of the Day",
     '&GetText($url,"(?i)white.*arial","(?i)</font>")',
+    '',
     'print ("$grabbedData[0]\n")',
+  ],
+  "dilbert" =>
+  [
+    \&HandleGeneric,
+    [7],
+    "http://www.unitedmedia.com/comics/dilbert/index.html",
+    "Dilbert",
+    '&GetLinks($url,"(?i)today\'s strip","(?i)</td>")',
+    '',
+    'print "  $grabbedData[0]\n"',
+  ],
+  "calvin" =>
+  [
+    \&HandleGeneric,
+    [7],
+    "http://www.uexpress.com/ups/comics/ch/",
+    "Calvin and Hobbes",
+    '&GetLinks($url,"(?i)comic strip","(?i)<br")',
+    '',
+    'print "  $grabbedData[0]\n"',
+  ],
+  "userfriendly" =>
+  [
+    \&HandleGeneric,
+    [7],
+    "http://www.userfriendly.org/static/",
+    "User Friendly",
+    '&GetLinks($url,"(?i)<hr size=\"6\">","(?i)<font")',
+    '',
+    'print "  $grabbedData[0]\n"',
+  ],
+  adam =>
+  [
+    \&HandleGeneric,
+    [7],
+    "http://www.uexpress.com/ups/comics/ad/",
+    "Adam\@Home",
+    '&GetLinks($url,"ENDxx>","</TABLE")',
+    '',
+    'print "  $grabbedData[0]\n"',
   ],
 );
 
@@ -286,6 +333,8 @@ EOF
 
 use LWP::UserAgent;
 use Time::Local;
+# For easy date/time manipulation
+use POSIX;
 
 use constant DEBUG => Main::DEBUG;
 
@@ -493,6 +542,7 @@ sub PrintTwoColumns
 
   print ("<tr>\n  <td width=50% valign=top>\n");
 
+
   for (my $index=0;$index < int($#items/2)+1;$index++)
   {
     print ("    $items[$index]<br>\n");
@@ -519,7 +569,9 @@ my $attributes = shift;
 my $tagName = shift;
 my @data = @_;
 
-if ($attributes->{style} =~ /^unorderedlist$/i)
+# Unordered list is the default
+if ((!defined $attributes->{style})
+    || ($attributes->{style} =~ /^unorderedlist$/i))
 {
   &PrintUnorderedList(@data);
 }
@@ -529,7 +581,7 @@ elsif ($attributes->{style} =~ /^twocolumn$/i)
 }
 else
 {
-  print "Warning: Unknown style for $tagName\n";
+  print "Warning: Unknown style for $tagName.\n";
 }
 }
 
@@ -543,7 +595,8 @@ else
 # - the name of the data (used in error messages and output comments)
 # - the function to use to get the data (GetLinks and GetText are good
 #   examples so far. See their comments for more info.)
-# - the function to use to output the data
+# - the code to use to filter the acquired data
+# - the code to use to output the data
 sub HandleGeneric
 {
 my $attributes = shift;
@@ -551,9 +604,10 @@ my $updateTimes = shift;
 my $url = shift;
 my $tagName = shift;
 my $getFunction = shift;
-my $outputFunction = shift;
+my $filterCode = shift;
+my $outputCode = shift;
 
-return 0 if &CachedDataUsable($tagName,@$updateTimes);
+return if &CachedDataUsable($tagName,@$updateTimes);
 
 my $time = time;
 print "<!-- $tagName ".$time." -->\n";
@@ -562,19 +616,22 @@ print "<!-- $tagName ".$time." -->\n";
 my @grabbedData = eval $getFunction;
 print "<!--DEBUG: Acquired ".($#grabbedData+1)." lines of data.-->\n" if (DEBUG);
 
+# Filter the data
+eval $filterCode;
+
 if ($#grabbedData == -1)
 {
   # Don't change "Couldn't get". It's used by CachedDataUsable
   print "Couldn't get $tagName.\n";
   print "<!-- $tagName ".$time." -->\n";
-  return 1;
+  return;
 };
 
 # Output the data
-eval $outputFunction;
+eval $outputCode;
 
 print "<!-- $tagName ".$time." -->\n";
-return 0;
+return;
 }
 
 #-------------------------------------------------------------------------------
@@ -582,95 +639,81 @@ return 0;
 # Output the time in the following formats, depending on the parameter
 # passed:
 # style=twentyfour: 14:17:59
-# style=twelve: 2:17:59 PM
-
+# style=twelve: 2:17:59 PM (default)
 sub HandleTime
 {
 my $attribs = shift;
-my ($second,$minute,$hour) = (localtime(time))[0..2];
 
 my $time;
 
-$minute = "0$minute" if $minute < 10;
-$second = "0$second" if $second < 10;
-
-if ($attribs->{style} =~ /^twentyfour$/i)
+# Twelve hour is the default
+if ((!defined $attribs->{style}) || ($attribs->{style} =~ /^twelve$/i))
 {
-  $time = "$hour:$minute:$second";
+  $time = POSIX::strftime("%l:%M:%S %p", localtime);
 }
-elsif ($attribs->{style} =~ /^twelve$/i)
+elsif ($attribs->{style} =~ /^twentyfour$/i)
 {
-  my $suffix;
+  $time = POSIX::strftime("%k:%M:%S", localtime);
+}
 
-  if ($hour < 12) {
-    $suffix = "AM";
-  }
-  else
-  {
-    $suffix = "PM";
-    $hour = $hour-12;
-  }
-  $time = "$hour:$minute:$second $suffix";
+# If the time is empty, or contains a % (from the strftime) or if it is the
+# exact same as the format string, most likely its not what we wanted
+if ((!$time) || ($time =~ m/\%/)
+   || ((defined $attribs->{style} && $time =~ m/^($attribs->{style})$/))) 
+{
+  print "Warning: Unknown style for time.\n";
 }
 else
 {
-  print "Warning: Unknown style for time\n";
+  print $time;
 }
-
-print $time;
 
 }
 
 #-------------------------------------------------------------------------------
 
 # Output the date in the following formats, depending on the parameter passed:
-# style=day: Tuesday, November 7
+# style=day: Tuesday, November 7 (default)
 # style=numeric: 951107
 # style=long: November 7, 1995
+# style=Anything else defined by the function strftime (see man strftime 3)
+
 sub HandleDate
 {
 my $attribs = shift;
-my ($hour,$day,$month,$year,$wday) = (localtime(time))[2..6];
 
-my @weekdays = qw{Sunday Monday Tuesday Wednesday Thursday Friday Saturday};
-my @months = qw{January February March April May June July August September
-                October November December};
+my ($date,@datearray);
 
-my $date;
-if ($attribs->{style} =~ /^day$/i)
+if ((!defined $attribs->{style}) || ($attribs->{style} =~ /^day$/i))
 {
-  $date = $weekdays[$wday].", ".$months[$month]." ".$day
+  $date = POSIX::strftime("%A, %B %d", localtime);
 }
 elsif ($attribs->{style} =~ /^numeric$/i)
 {
-  $date = $year;
-
-  if ($month < 10) {
-    $date = $date."0".($month+1)
-  }
-  else
-  {
-    $date = $date.($month+1)
-  };
-
-  if ($day < 10) {
-    $date = $date."0".$day
-  }
-  else
-  {
-    $date = $date.($day+1);
-  }
+  $date = POSIX::strftime("%D", localtime);
+  @datearray  = split(/\//,$date);
+  $date = "$datearray[2]$datearray[0]$datearray[1]";
 }
 elsif ($attribs->{style} =~ /^long$/i)
 {
-  $date = $months[$month]." ".$day.", 19".$year;
+  $date = POSIX::strftime("%B %d, %Y", localtime);
 }
 else
 {
-  print "Warning: Unknown style for date\n";
+  $date = POSIX::strftime($attribs->{style}, localtime);
 }
 
-print $date;
+# If the date is empty, or contains a % (from the strftime) or if it is the
+# exact same as the format string, most likely its not what we wanted.
+if ((!$date) || ($date =~ m/\%/)
+   || ((defined $attribs->{style}) && ($date =~ m/^($attribs->{style})$/))) 
+{
+  print "Warning: Unknown style for date.\n";
+}
+else
+{
+  print $date;
+}
 }
 
 # ------------------------------------------------------------------------------
@@ -790,10 +833,15 @@ sub HandleWeather
 {
 my $attributes = shift;
 my $updateTimes = shift;
-my $url = shift;
 my $tagName = shift;
 
-return 0 if &CachedDataUsable($tagName,@$updateTimes);
+if (!$attributes->{url})
+{
+  print "URL attribute must be defined for weather tag\n";
+  return;
+}
+
+return if &CachedDataUsable($tagName,@$updateTimes);
 
 my $time = time;
 print "<!-- $tagName ".$time." -->\n";
@@ -801,10 +849,10 @@ print "<!-- $tagName ".$time." -->\n";
 my $userAgent = new LWP::UserAgent;
 $userAgent->timeout($socketTimeout);
 $userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
-my $request = new HTTP::Request GET => "$url";
+my $request = new HTTP::Request GET => $attributes->{url};
 my $html = $userAgent->request($request)->content;
 
-return () if !defined $html;
+return if !defined $html;
 
 my ($currentWeather) = $html =~ /=====\n(.*?)\n/s;
 my ($forecast) = $html =~ /\n (\S.*?)\n\s*\n/s;
@@ -814,7 +862,7 @@ if (($forecast eq "") || ($currentWeather eq ""))
   # Don't change "Couldn't get". It's used by CachedDataUsable
   print "Couldn't get $tagName.\n";
   print "<!-- $tagName ".$time." -->\n";
-  return 1;
+  return;
 };
 
   # Print the table headers.
@@ -833,7 +881,7 @@ EOT
 print "</table>\n";
 
 print "<!-- $tagName ".$time." -->\n";
-return 0;
+return;
 }
 
 # ------------------------------------------------------------------------------
@@ -933,12 +981,18 @@ if (!DEBUG)
   rename ($outHtml.".temp",$outHtml);
   chmod 0755, $outHtml;
 
-  # Now print the results in case DailyUpdate was invoked through cgiwrap.
-  print "Content-type: text/html\n\n";
+  # Check to see if we were invoked as a cgi script
+  my $scriptname;
+  $scriptname = $ENV{'SCRIPT_NAME'} or $scriptname = '';
+  if ($scriptname)
+  {
+    # Now print the results becuase DailyUpdate was invoked as some sort of cgi.
+    print "Content-type: text/html\n\n";
 
-  open (INFILE, $outHtml);
-  while (defined(my $line = <INFILE>)) {
-    print $line;
+    open (INFILE, $outHtml);
+    while (defined(my $line = <INFILE>)) {
+      print $line;
+    }
+    close INFILE;
   }
-  close INFILE;
 }

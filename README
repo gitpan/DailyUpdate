@@ -1,20 +1,26 @@
-DailyUpdate version 4.1
+DailyUpdate version 4.3
+
+!If anyone knows how I can move the %tagToHandler and other config variables
+to another file, please tell me. I can't seem to figure out the scoping
+correctly... -- Thanks!
 
 DailyUpdate is an information integrator. It creates a custom web page from a
 template HTML file with special tags, replacing those tags with dynamic
 information acquired from the internet.
 
-DailyUpdate needs libwww for Perl. Get it from CPAN at
-%CPAN%/modules/by-module/LWP/.
+DailyUpdate needs LWP::UserAgent from the libwww library, URI::URL, and
+HTML::Parser. Get them from CPAN at %CPAN%/modules/by-module/LWP/.
+
+New in version 4.3: Added Infoworld, and Adam@Home. Changed date & time
+handlers to take any valid strftime format string, and made url attribute to
+weather mandatory. Changed CoolSite to use their logo. Script only dumps to
+screen if called as a cgi script. Added default values to date, time, and
+OutputListOrColumns. 
 
 New in version 4.2: Added "linuxtoday", and "time".  Modified GetText &
 GetLinks to take "^" and "\$" signifying start and end of file. Added proxy
 support. Fork is now disabled on Windows platforms. Moved from HTML::Parse to
 HTML::Parser.
-
-New in version 4.1: Added "User Friendly" and "Freshmeat" support. Fixed
-Slashdot so that it takes a style. Changed it to use LWP instead of my own
-HTTP sockets stuff.
 
 Written by David Coppit (coppit@cs.virginia.edu,
   http://www.cs.virginia.edu/~dwc3q/index.html)
