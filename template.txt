@@ -1,0 +1,71 @@
+<html>
+<head>
+<title>Daily Update -- Test Page</title>
+</head>
+
+<BODY>
+
+<h1>DailyUpdate -- Test Page</h1>
+
+<p>
+This page shows off some of the tags.  I've purposely made this page boring to
+make it more clear what it being done by DailyUpdate.
+</p>
+
+<p>
+To try out other tags, first visit the <a
+href="http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/handlers.html">handlers</a>
+page. When you find one you like, put the tag in your input file, and run
+Daily Update once manually. The script will ask you to allow it to download
+the handler, which will then be installed and available for later.
+Some handlers require other Perl modules, which you may have to install
+yourself.
+</p>
+
+<p>
+
+<h3>Associated Press News</h3>
+
+<p>
+  &lt;dailyupdate name=apnews style=twocolumn&gt;<br>
+  <dailyupdate name=apnews style=twocolumn>
+</p>
+
+<h3>Yahoo Stock Market Indices</h3>
+
+<p>
+  &lt;dailyupdate name=yahoostockindices&gt;
+  <dailyupdate name=yahoostockindices>
+</p>
+
+<h3>Slashdot Headlines</h3>
+
+<p>
+  &lt;dailyupdate name=slashdot style=twocolumn&gt;
+  <dailyupdate name=slashdot style=twocolumn>
+</p>
+
+<h3>Dilbert Comic</h3>
+
+<p>
+  &lt;dailyupdate name=dilbert&gt;<br>
+  <dailyupdate name=dilbert>
+</p>
+
+<h3>Freshmeat Headlines</h3>
+
+<p>
+  &lt;dailyupdate name=freshmeat&gt;<br>
+  <dailyupdate name=freshmeat>
+</p>
+
+<h3>Charlottesville Weather</h3>
+
+<p>
+  &lt;dailyupdate name=weather
+  url="http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt"&gt;<br>
+  <dailyupdate name=weather url="http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt">
+</p>
+
+</body>
+</html>

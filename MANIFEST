@@ -1,0 +1,18 @@
+DailyUpdate.pl                    The main script
+DailyUpdate.cfg                   A sample configuration file
+template.txt                      A sample input file
+MakeHandler.pl                    A utility to ease the creation of handlers
+README                            Notes about Daily Update
+DESIGN                            Documentation of Daily Update's architecture
+MANIFEST                          This file
+TODO                              Planned changes to Daily Update
+
+DailyUpdate/AcquisitionFunctions.pm  An API of functions for handler developers
+DailyUpdate/Handler.pm               The base class for all handlers
+DailyUpdate/HandlerFactory.pm        A class that encapsulates the locating
+                                       of handlers
+DailyUpdate/OutputFunctions.pm       An API of functions for handler developers
+DailyUpdate/Parser.pm                The parser for input files
+
+DailyUpdate/Handler/                 The directory in which handlers are
+                                       installed
