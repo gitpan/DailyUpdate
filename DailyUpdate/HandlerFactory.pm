@@ -5,10 +5,14 @@ use strict;
 use Carp;
 # For UserAgent
 use LWP::UserAgent;
+# For mkpath
+use File::Path;
+# For GetUrl
+use DailyUpdate::AcquisitionFunctions qw( GetUrl );
 
 use vars qw( $VERSION );
 
-$VERSION = 0.1;
+$VERSION = 0.2;
 
 # DEBUG for this package is the same as the main.
 use constant DEBUG => main::DEBUG;
@@ -34,43 +38,58 @@ sub new
 
 # ------------------------------------------------------------------------------
 
-sub _DownloadHandler
+sub _GetHandlerCode
 {
   my $handlerName = shift;
-  print "<!-- DEBUG: Downloading handler $handlerName -->\n" if DEBUG;
 
   my $url = "http://www.cs.virginia.edu/cgi-bin/cgiwrap?user=dwc3q&script=GetHandler&tag=$handlerName";
 
-  my $userAgent = new LWP::UserAgent;
-  $userAgent->timeout($main::config{socketTimeout});
-  $userAgent->proxy(['http', 'ftp'], $main::config{proxy})
-    if $main::config{proxy} ne '';
-  my $request = new HTTP::Request GET => "$url";
-  my $result = $userAgent->request($request);
+  print "<!-- DEBUG: Downloading handler code. -->\n" if DEBUG;
+  my $data = &GetUrl($url);
 
-  if (!$result->is_success)
+  if (!defined $data)
   {
-    print STDERR "Couldn't get handler. Error on HTTP request: ".$result->message.".\n";
+    print STDERR "Couldn't download handler.\n";
     return;
   }
 
-  if ($result->content =~ /^Tag not found/)
+  if ($$data =~ /^Tag not found/)
   {
     print STDERR "Server reports that there is no such handler.\n";
     return;
   }
 
-  # Now save it somewhere
-  mkdir "$main::config{handlerlocations}->[0]/DailyUpdate",0755;
-  mkdir "$main::config{handlerlocations}->[0]/DailyUpdate/Handler",0755;
-  open HANDLER,">$main::config{handlerlocations}->[0]/DailyUpdate/Handler/$handlerName.pm";
-  print HANDLER $result->content;
+  return $$data;
+}
+
+# ------------------------------------------------------------------------------
+
+# Replaces handler, if it is in the search path.
+sub _DownloadHandler
+{
+  my $handlerName = shift;
+
+  my $directory;
+  $directory = $INC{"DailyUpdate/Handler/$handlerName.pm"} ||
+    "$main::config{handlerlocations}->[0]/DailyUpdate/Handler";
+
+  mkpath $directory unless -e $directory;
+  unlink "$directory/$handlerName.pm" if -e "$directory/handlerName.pm";
+
+  print "<!-- DEBUG: Downloading handler $handlerName -->\n" if DEBUG;
+
+  my $code = &_GetHandlerCode($handlerName);
+
+  return if $code =~ /^Tag not found/;
+
+  open HANDLER,">$directory/$handlerName.pm";
+  print HANDLER $code;
   close HANDLER;
 
   print STDERR "The $handlerName handler has been downloaded and saved as\n";
-  print STDERR "$main::config{handlerlocations}->[0]/$handlerName.pm\n";
+  print STDERR "$directory/$handlerName.pm\n";
 
-  my @uses = $result->content =~ /\nuse (.*?);/g;
+  my @uses = $code =~ /\nuse (.*?);/g;
 
   @uses = grep {!/(vars|constant|DailyUpdate|strict)/} @uses;
 
@@ -80,6 +99,61 @@ sub _DownloadHandler
     $" = '\n';
     print STDERR "@uses\n";
     print STDERR "Make sure you have them installed.\n";
+  }
+}
+
+# ------------------------------------------------------------------------------
+
+# Replaces handler, if it is in the search path.
+sub _HandlerOutdated
+{
+  my $handlerName = shift;
+  print "<!-- DEBUG: Checking version of handler $handlerName -->\n" if DEBUG;
+
+  my $code = &_GetHandlerCode($handlerName);
+  my ($remoteVersion) = $code =~ /\$VERSION *= *(.*?);/s;
+
+  my $foundDirectory = undef;
+  foreach my $directory (@INC)
+  {
+    if (-e "$directory/DailyUpdate/Handler/$handlerName.pm")
+    {
+      $foundDirectory = "$directory/DailyUpdate/Handler";
+      last;
+    }
+  }
+
+  unless (defined $foundDirectory)
+  {
+    print "<!-- DEBUG: Handler $handlerName not found locally. -->\n" if DEBUG;
+    return 1;
+  }
+
+  print "<!-- DEBUG: Found local copy of handler in: $foundDirectory -->\n"
+    if DEBUG;
+
+  open LOCALHANDLER, "$foundDirectory/$handlerName.pm";
+  my $localHandler = join '',<LOCALHANDLER>;
+  close LOCALHANDLER;
+  my ($localVersion) = $localHandler =~ /\$VERSION *= *(.*?);/s;
+
+  if (DEBUG)
+  {
+    print "<!-- DEBUG: Comparing local version ($localVersion) to";
+    print " remote version ($remoteVersion). -->\n";
+  }
+
+  if (($localVersion cmp $remoteVersion) == -1)
+  {
+    # Remote is newer. Need to download handler.
+    print "<!-- DEBUG: Remote version is newer. -->\n" if DEBUG;
+    return 1;
+  }
+  else
+  {
+    # Local is newer. No need to download handler.
+    print "<!-- DEBUG: Local version is newer. -->\n" if DEBUG;
+    return 0;
   }
 }
 
@@ -96,41 +170,72 @@ sub Create
 
   $handlerName =~ lc($handlerName);
 
-  eval "require DailyUpdate::Handler::$handlerName";
-  
-  if ($@ =~ /Can't locate DailyUpdate.Handler.$handlerName/)
+  # Figure out if we need to download the handler, either because ours is out
+  # of date, or because we don't have it installed.
+  my $needDownload = 0;
+  if (exists $main::opts{n})
   {
-    # Clear out the cached require information
-    delete $INC{"DailyUpdate/Handler/$handlerName.pm"};
-
-    print STDERR "\n\nCan not find handler '$handlerName'\n";
-    print STDERR "Would you like Daily Update to attempt to download it?\n";
-    my $response = <STDIN>;
-    if ($response =~ /^y/i)
+    if (&_HandlerOutdated($handlerName))
     {
-      &_DownloadHandler($handlerName);
-      eval "require DailyUpdate::Handler::$handlerName";
-
-      if ($@ =~ /Can't locate DailyUpdate.Handler.$handlerName/)
-      {
-        print STDERR "Handler could not be loaded.\n";
-        return undef;
-      }
-      elsif ($@)
-      {
-        print STDERR $@;
-        return undef;
-      }
-      else
-      {
-        return "DailyUpdate::Handler::$handlerName"->new;
-      }
+      print STDERR "\n\nThere is a newer version of handler '$handlerName',";
+      print STDERR " or it is not installed locally.\n";
+      $needDownload = 1;
     }
     else
     {
-      print STDERR "Okay, then remove the tag from your input file.\n";
-      return undef;
+      eval "require DailyUpdate::Handler::$handlerName";
+      $needDownload = 0;
     }
+  }
+  else
+  {
+    eval "require DailyUpdate::Handler::$handlerName";
+    if ($@ =~ /Can't locate DailyUpdate.Handler.$handlerName/)
+    {
+      print STDERR "\n\nCan not find handler '$handlerName'\n";
+      $needDownload = 1;
+    }
+    else
+    {
+      $needDownload = 0;
+    }
+  }
+
+  if ($needDownload == 1)
+  {
+    print "<!-- DEBUG: Download of new handler needed. -->\n" if DEBUG;
+  
+    if (exists $main::opts{a})
+    {
+      print STDERR "Doing automatic download.\n";
+      &_DownloadHandler($handlerName);
+    }
+    else
+    {
+      print STDERR "Would you like Daily Update to attempt to download it?\n";
+      my $response = <STDIN>;
+
+      if ($response =~ /^y/i)
+      {
+        &_DownloadHandler($handlerName);
+      }
+      else
+      {
+        print STDERR "Okay, then remove the tag from your input file.\n";
+        return undef;
+      }
+    }
+
+    # Clear out the cached require information
+    delete $INC{"DailyUpdate/Handler/$handlerName.pm"};
+
+    eval "require DailyUpdate::Handler::$handlerName";
+  }
+
+  if ($@ =~ /Can't locate DailyUpdate.Handler.$handlerName/)
+  {
+    print STDERR "Handler could not be loaded.\n";
+    return undef;
   }
   elsif ($@)
   {

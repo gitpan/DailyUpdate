@@ -17,7 +17,7 @@ use vars qw( @ISA @EXPORT_OK $VERSION );
 @ISA = qw( Exporter );
 @EXPORT_OK = qw( MakeLinksAbsolute GetUrl GetHtml GetImages GetLinks GetText );
 
-$VERSION = 0.1;
+$VERSION = 0.2;
 
 # DEBUG for this package is the same as the main.
 use constant DEBUG => main::DEBUG;
@@ -36,17 +36,17 @@ sub ExtractText
   if (($startPattern ne '^') && ($endPattern ne '$'))
   {
     $html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s;
-    $html = '' if $1 eq '';
+    $html = '' unless defined $1;
   }
   if (($startPattern ne '^') && ($endPattern eq '$'))
   {
     $html =~ s/.*?$startPattern(.*)/$1/s;
-    $html = '' if $1 eq '';
+    $html = '' unless defined $1;
   }
   if (($startPattern eq '^') && ($endPattern ne '$'))
   {
     $html =~ s/(.*?)$endPattern.*/$1/s;
-    $html = '' if $1 eq '';
+    $html = '' unless defined $1;
   }
 
   return $html;
@@ -106,7 +106,7 @@ sub GetUrl
 
     if (!$result->is_success)
     {
-      # Don't change "Couldn't get". It's used by CachedDataUsable
+      # Don't change "Couldn't". It's used by CachedDataUsable
       print "Couldn't get data. Error on HTTP request: ".$result->message.".\n"
         if (defined $result);
       return;
@@ -139,12 +139,20 @@ sub GetText
   $html =~ s/<[^>]*$//s;
 
   require HTML::FormatText;
-  use HTML::Parse;
+  require HTML::TreeBuilder;
+
   my $f = HTML::FormatText->new(leftmargin=>0);
-  $html = $f->format(parse_html($html));
+  $html = $f->format(HTML::TreeBuilder->new->parse($html));
   $html =~ s/\n*$//sg;
 
-  return \$html;
+  if ($html ne '')
+  {
+    return \$html;
+  }
+  else
+  {
+    return undef;
+  }
 }
 
 # ------------------------------------------------------------------------------
@@ -168,7 +176,14 @@ sub GetHtml
 
   $html = &MakeLinksAbsolute($url,$html);
 
-  return \$html;
+  if ($html ne '')
+  {
+    return \$html;
+  }
+  else
+  {
+    return undef;
+  }
 }
 
 #-------------------------------------------------------------------------------
@@ -202,7 +217,14 @@ sub GetImages
     push @imgTags,$imgTag;
   }
 
-  return \@imgTags;
+  if ($#imgTags != -1)
+  {
+    return \@imgTags;
+  }
+  else
+  {
+    return undef;
+  }
 }
 
 # ------------------------------------------------------------------------------
@@ -229,12 +251,12 @@ sub GetLinks
   my @links;
 
   # See if there's a link on this line
-  while ($html =~ /(<a href.*?>.*?<\/a>)/sgci)
+  while ($html =~ /(< *a[^>]*\bhref\b[^>]*>.*?<\/a>)/sgci)
   {
     my $link = $1;
 
     # Remove any formatting
-    $link =~ s/< *\/?(font|li|b|h[1-9]).*?>//sig;
+    $link =~ s/< *\/?\b(font|li|b|br|h[1-9])\b[^>]*>//sig;
 
     # change relative tags to absolute
     $link = &MakeLinksAbsolute($url,$link);
@@ -242,7 +264,14 @@ sub GetLinks
     push @links,$link;
   }
 
-  return \@links;
+  if ($#links != -1)
+  {
+    return \@links;
+  }
+  else
+  {
+    return undef;
+  }
 }
 
 1;

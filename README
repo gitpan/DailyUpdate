@@ -1,4 +1,4 @@
-DailyUpdate version 5.0.2
+DailyUpdate version 5.1
 
 DailyUpdate is an information integrator. It creates a custom web page from a
 template HTML file with special tags, replacing those tags with dynamic
@@ -13,55 +13,48 @@ everything but the kitchen sink.
 
 CHANGES
 
+New in version 5.1: 
+- Update times are now set by the handlers by overriding GetUpdateTimes. (The
+  default is 2,5,8,11,14,17,20,23.) Users can also customize the update times
+  in the configuration file, if they don't like the ones given by the
+  handlers. Modified MakeHandler.pl to support this.
+- Fixed a caching bug that would cause (a) multiple copies of some data when a
+  tag is used more than once on the same page, and (b) reuse of cached data
+  even when the style has been changed.
+- Added -a flag for automatic download of handlers.
+- Added -n flag to check for new versions of handlers.
+- Fixed prerequisites.
+- Removed use of the deprecated HTML::Parse in AcquisitionFunctions.pm
+
 New in version 5.0.2: 
 - Fixed data caching.
 - MakeHandler.pl now stores the URL in the comment block.
 - Created POD documentation in DailyUpdate.pl
 - Fixed a problem with the loading of configuration information
 
-New in version 5.0.1: 
-- Fixed a bug in MakeHandler.pl
-- Improved error checking for missing Perl modules when installing new
-  handlers.
-
-New in version 5.0: This is a major rewrite.
-- Handlers, implemented as Perl classes, are now used instead of the schemas
-  of previous versions. The GetHtml, GetText, OutputTwoColumn,
-  OutputUnorderedList, etc. functions are now part of two APIs that can be
-  used by handler writers: DailyUpdate::AcquisitionFunctions, and
-  DailyUpdate::OutputFunctions.
-- No handlers are distributed with Daily Update.  Instead, the user is
-  prompted for permission to install them as necessary. This makes using a new
-  tag easy -- just put it in your input file, run Daily Update once manually,
-  and tell it to download the handler.
-- The handlers are real Perl, instead of the pseudo Perl used in the schemas.
-  This increases the difficulty of adding new tags, but gives people a lot
-  more flexibility. To help things, I've included a script "MakeHandler.pl"
-  which will create a prototype handler based on user inputs.
-- GetText now uses HTML::FormatText.
-- Tags are now of the syntax <dailyupdate name=X>
-
 
 PREREQUISITES
 
-You will need Perl version 5.004 or newer. In addition, Daily Update needs
-LWP::UserAgent from the libwww library, URI, and HTML::Parser. Get them from
-CPAN at %CPAN%/modules/by-module/LWP/. Visit http://www.perl.com/ if you don't
-know about CPAN.
+You will need Perl version 5.004 or newer. In addition, Daily Update uses the
+libwww library (LWP), URI, HTML-Tree, and HTML::Parser, all of which are
+available on CPAN at http://www.perl.com/CPAN/modules/by-module/.
 
 
 INSTALLATION
 
 - Quick Start
 
-Run DailyUpdate.pl from the command line, and answer yes to the handlers that
-you want to download for the example template.txt file. See
+Run 'DailyUpdate.pl -n -a' from the command line. Look at the template.txt
+file and the output.html file. See
 http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/handlers.html for more
 tags.
 
 Since the example template isn't too exciting, you may want to take your
 normal homepage and jazz it up with the Daily Update tags. Change the inHtml
 and outHtml variables in the DailyUpdate.cfg file.
+
+Try 'pod2text DailyUpdate.pl' for documentation, or visit the web page at
+http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/index.html.
 
 - Detailed Installation
 
@@ -77,8 +70,8 @@ cgi-bin), be sure to update the handlerlocations variable.
 
 DOCUMENTATION
 
-Go to http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/index.html. I'll try
-to get some POD written one of these days...
+Go to http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/index.html. Also try
+'pod2text DailyUpdate.pl'.
 
 
 SUPPORT

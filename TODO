@@ -10,5 +10,3 @@ me know.
   hunk of HTML when a tag is seen. But for more advanced stuff, like
   javascript in the header, I should really be manipulating the abstract
   syntax tree for the output HTML.
-- Version check for modules: Have the script automatically check for new
-  versions of handlers, and install them automatically.

@@ -17,7 +17,7 @@ use Carp;
 
 use vars qw( $VERSION );
 
-$VERSION = 0.1;
+$VERSION = 0.2;
 
 my $oldHtml = undef;
 
@@ -40,6 +40,12 @@ sub new
   # Store a reference to the class data;
   $self->{"_OLDHTML"} = \$oldHtml;
 
+  # Set the default update times
+  $self->{UPDATETIMES} = [2,5,8,11,14,17,20,23];
+
+  # We'll set this later when we know what the attributes are.
+  $self->{TAGNAME} = undef;
+
   # Make the object a member of the class
   bless ($self, $class);
 
@@ -57,15 +63,22 @@ sub CachedDataUsable
 {
   my ($self) = @_;
 
-  my $tagName = ref($self);
-  $tagName =~ s/.*:://;
+  my $tagName = $self->{TAGNAME};
+  my ($baseTagName) = $tagName =~ /^(\S*)/;
 
   # Get the times that the user has specified, or the default times.
   my @updateTimes =
-   @{$main::config{updatetimes}->{$tagName} ||
-     $main::config{defaultupdatetimes} };
+   @{$main::config{updatetimes}->{$baseTagName} || $self->GetUpdateTimes};
 
-  print "<!--DEBUG: CachedDataUsable: checking $tagName-->\n" if DEBUG;
+  if (DEBUG)
+  {
+    my $temp = $";
+    $" = ',';
+    print "<!--DEBUG: Update times are: @updateTimes -->\n";
+    $" = $temp;
+  }
+
+  print "<!--DEBUG: CachedDataUsable: checking $baseTagName-->\n" if DEBUG;
 
   # If the user specified "always", there's no need to check the time.
   print "<!--DEBUG:  \"Always\" specified. Skipping cache check.-->\n"
@@ -95,7 +108,7 @@ sub CachedDataUsable
   # Need to get data if we can't find the embedded timestamp
   if ($oldHtml !~ /<!-- $tagName (\d+) -->/)
   {
-    print "<!--DEBUG:  Can't find embedded timestamp for $tagName.-->\n" if DEBUG;
+    print "<!--DEBUG:  Can't find embedded timestamp for $baseTagName.-->\n" if DEBUG;
     return 0;
   }
   else
@@ -104,7 +117,7 @@ sub CachedDataUsable
   }
 
   # Need to get the data if we were unsuccessful last time
-  if ($oldHtml =~ /<!-- $tagName (\d+) -->\nCouldn't get/)
+  if ($oldHtml =~ /<!-- $tagName (\d+) -->\nCouldn't/)
   {
     print "<!--DEBUG:  Data was not grabbed successfully last time.-->\n"
       if DEBUG;
@@ -142,17 +155,23 @@ sub PrintCachedData
 {
   my ($self) = @_;
 
-  my $tagName = ref($self);
-  $tagName =~ s/.*:://;
+  my $tagName = $self->{TAGNAME};
 
   # Otherwise, just print out the old data
   print "<!--DEBUG: Printing cached data.-->\n" if DEBUG;
-  my ($oldData) =
-    $oldHtml =~ /(<!-- $tagName \d+ -->\n.*?<!-- $tagName \d+ -->)/s;
-  if (defined $oldData)
+
+  if (!defined $oldHtml)
   {
-    print "Reusing cached data.\n";
-    print "$oldData\n";
+    print "Couldn't print cached data -- none available.\n" if DEBUG;
+    return;
+  }
+
+  my ($oldData) =
+    $oldHtml =~ /<!-- $tagName \d+ -->\n(.*?)<!-- $tagName \d+ -->/s;
+  if ((defined $oldData) && ($oldData !~ /^Couldn't/))
+  {
+    print "Reusing cached data.<br>\n";
+    print $oldData;
   }
 }
 
@@ -165,6 +184,11 @@ sub Handle
 
   my $tagName = ref($self);
   $tagName =~ s/.*:://;
+  foreach my $key (sort keys %$attributes)
+  {
+    $tagName .= " $key=$attributes->{$key}";
+  }
+  $self->{TAGNAME} = $tagName;
 
   return if $self->CachedDataUsable();
 
@@ -178,10 +202,16 @@ sub Handle
 
   if (!defined $grabbedData)
   {
+    print "Couldn't get data -- acquisition function failed.\n";
     $self->PrintCachedData();
     print "<!-- $tagName $time -->\n";
     return;
   }
+
+  print "<!--DEBUG: ",$#{$grabbedData}+1," lines acquired. -->\n"
+    if DEBUG && ref($grabbedData) eq "ARRAY";
+  print "<!--DEBUG: ",length $$grabbedData," characters acquired. -->\n"
+    if DEBUG && ref($grabbedData) eq "SCALAR";
 
   print "<!--DEBUG: Handler is filtering data.-->\n" if DEBUG;
 
@@ -190,12 +220,17 @@ sub Handle
 
   if (!defined $grabbedData)
   {
-    # Don't change "Couldn't get". It's used by CachedDataUsable
+    # Don't change "Couldn't". It's used by CachedDataUsable
     print "Couldn't update information (filter removed everything).\n";
     $self->PrintCachedData();
     print "<!-- $tagName $time -->\n";
     return;
   }
+
+  print "<!--DEBUG: ",$#{$grabbedData}+1," lines filtered. -->\n"
+    if DEBUG && ref($grabbedData) eq "ARRAY";
+  print "<!--DEBUG: ",length $$grabbedData," characters filtered. -->\n"
+    if DEBUG && ref($grabbedData) eq "SCALAR";
 
   print "<!--DEBUG: Handler is outputting data.-->\n" if DEBUG;
 
@@ -243,6 +278,15 @@ sub Output
 
   my $type = ref($self);
   croak "$type must override Output.\n";
+}
+
+# ------------------------------------------------------------------------------
+
+sub GetUpdateTimes
+{
+  my $self = shift;
+
+  return $self->{UPDATETIMES};
 }
 
 # ------------------------------------------------------------------------------

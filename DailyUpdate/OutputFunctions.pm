@@ -15,7 +15,7 @@ use vars qw( @ISA @EXPORT_OK $VERSION );
 @EXPORT_OK = qw( OutputUnorderedList OutputOrderedList OutputTwoColumns
                  OutputListOrColumns );
 
-$VERSION = 0.2;
+$VERSION = 0.3;
 
 # DEBUG for this package is the same as the main.
 use constant DEBUG => main::DEBUG;
@@ -65,14 +65,14 @@ sub OutputTwoColumns
 
   for (my $index=0;$index < int($#items/2)+1;$index++)
   {
-    print ("    <li> $items[$index]<br>\n");
+    print ("    <li> $items[$index]\n");
   }
 
   print "  </ul>\n  </td>\n  <td valign=top>\n  <ul>";
 
   for (my $index=int($#items/2)+1;$index <= $#items;$index++)
   {
-    print ("    <li> $items[$index]<br>\n");
+    print ("    <li> $items[$index]\n");
   }
 
   print ("  </ul>\n  </td>\n</tr>\n");

@@ -2,6 +2,8 @@
 eval 'exec perl -S $0 "$@"'
   if $running_under_some_shell;
 
+$VERSION = 0.2;
+
 # Get some basic info
 
 print "Name: ";
@@ -103,6 +105,20 @@ else
   $outputCode = 'print $$grabbedData;';
 }
 
+print <<EOF;
+The default times at which to update the data are 2,5,8,11,14,17,20,23. This
+means that at 2 am, 5 am, etc., the cached data will be discarded and
+refreshed from the server. Please enter the update times, or just hit enter if
+you want to accept the default times.
+
+For example, if you are making a handler for a daily comic, you might want to
+just use 7, since the comic changes at 6 am every day. Note that the user can
+override this value in the configuration file.
+EOF
+
+my $updateTimes = <STDIN>;
+chomp $updateTimes;
+
 open OLDOUT, ">&STDOUT";
 open STDOUT, ">$tag.pm";
 
@@ -172,8 +188,21 @@ sub Output
   $outputCode
 }
 
-1;
 EOF
+
+if ($updateTimes ne '')
+{
+print <<EOF;
+# ------------------------------------------------------------------------------
+
+sub GetUpdateTimes
+{
+  return [$updateTimes];
+}
+EOF
+}
+
+print "1;\n";
 
 open STDOUT, ">&OLDOUT";
 print <<EOF;

@@ -5,7 +5,7 @@ eval 'exec perl -S $0 "$@"'
 
 use vars qw($running_under_some_shell);         # no whining!
 
-# Daily Update, Version 5.0.2
+# Daily Update, Version 5.1
 
 # Daily Update grabs dynamic information from the internet and integrates it
 # into your webpage. Features:
@@ -21,10 +21,9 @@ use vars qw($running_under_some_shell);         # no whining!
 # For documentation on how to write handlers, go to
 #   http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/handlers.html
 
-# This code uses LWP::UserAgent from the libwww library, URI, and
-# HTML::Parser, all of which are available on CPAN at
-# %CPAN%/modules/by-module/LWP/. (Go to http://www.perl.com/ if you don't know
-# how to get to CPAN.)
+# This code uses the libwww library (LWP), URI, HTML-Tree, and HTML::Parser,
+# all of which are available on CPAN at
+# http://www.perl.com/CPAN/modules/by-module/.
 
 # I suggest using wwwis by Alex Knowles if your html file contains a lot of
 # images, which can slow down viewing time on browsers. His script, at
@@ -49,12 +48,19 @@ use vars qw($running_under_some_shell);         # no whining!
 
 # Version History (major changes only)
 
-# 5.0 This version is based on DailyUpdate 4.5. The reasons for the name
-#     change are:
-#     - the script was growing in its range of uses
-#     - I made the architecture object-oriented. (As Fred Brooks says, plan
-#       to build it twice, because you will end up doing it anyway.)
-#     Daily Update now sports a nifty plugin architecture for handlers that
+# 5.1 Update times are now set by the handlers by overriding GetUpdateTimes.
+#     (The default is 2,5,8,11,14,17,20,23.) Users can still customize the
+#     update times in the configuration file. Modified MakeHandler.pl to
+#     support this.
+#       Fixed a caching bug that would cause (a) multiple copies of some data
+#     when a tag is used more than once on the same page, and (b) reuse of
+#     cached data even when the style has been changed.
+#       Added -a and -n flags.
+#     Removed use of the deprecated HTML::Parse in AcquisitionFunctions.pm
+# 5.0 This is a major rewrite -- I made the architecture object-oriented.
+#     (As Fred Brooks says, plan to build it twice, because you will end up
+#     doing it anyway.)
+#       Daily Update now sports a nifty plugin architecture for handlers that
 #     allows quite a bit more freedom for end users, compared to the kludgy
 #     schema interface DailyUpdate had before. Also, there is support for
 #     automatic downloading of missing handlers.
@@ -77,24 +83,26 @@ use Getopt::Std;
 use FindBin;
 
 use vars qw( $VERSION );
-$VERSION = '5.0.2';
+$VERSION = '5.1';
 
 # ------------------------------------------------------------------------------
 
 sub usage
 {
 <<EOF;
-usage: DailyUpdate.pl [-i inputfile] [-o outputfile] [-c configfile]
+usage: DailyUpdate.pl [-an] [-i inputfile] [-o outputfile] [-c configfile]
 
 -i The template file to use as input (overrides value in configuration file)
 -o The output file (overrides value in configuration file)
 -c The configuration file to use
+-a Automatically download handlers as needed
+-n Check for new versions of the handlers
 EOF
 }
 
 # ------------------------------------------------------------------------------
 
-use vars qw( *OLDOUT %config );
+use vars qw( *OLDOUT %config %opts );
 
 BEGIN
 {
@@ -105,7 +113,6 @@ BEGIN
   }
 
   # See if the user specified the input and output files on the command line.
-  my %opts;
   getopt('ioc',\%opts);
 
   print usage and exit if $opts{h};
@@ -333,6 +340,14 @@ Override the output file specified in the configuration file.
 
 Use the specified file as the configuration file, instead of DailyUpdate.cfg.
 
+=item B<-a>
+
+Automatically download all handlers that are not installed locally.
+
+=item B<-n>
+
+Check for new versions of handlers while processing input file.
+
 =back
 
 =head1 RUNNING
@@ -360,10 +375,10 @@ http://www.cs.virginia.edu/cgi-bin/cgiwrap?user=dwc3q&script=DailyUpdate.pl
 
 =head1 PREREQUISITES
 
-This script requires the C<LWP::UserAgent>, C<URI>, and C<HTML::Parser>
-modules, in addition to others that are included in the standard Perl
-distribution. Download them from %CPAN%/modules/by-module/LWP/. (Go to
-http://www.perl.com/ if you don't know how to get to CPAN.)
+This script requires the C<LWP::UserAgent> (part of libwww), C<URI>,
+C<HTML-Tree>, and C<HTML::Parser> modules, in addition to others that are
+included in the standard Perl distribution.  Download them all from CPAN at
+http://www.perl.com/CPAN/modules/by-module/.
 
 Handlers that you download may require additional modules.
 
