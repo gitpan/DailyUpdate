@@ -1,6 +1,7 @@
 The purpose of this document is twofold: to give you an idea of what I'd like
 to do in future versions of DailyUpdate, and to give you an idea of what you
-can help me implement. :)
+can help me implement. :) Also, if you have any thoughts on these, please let
+me know.
 
 - Tooltips: Some website present information-less headlines, and a blurb
   explaining the headline. It would be nice if the blurb popped up when the
@@ -14,3 +15,15 @@ can help me implement. :)
   hunk of HTML when a tag is seen. But for more advanced stuff, like
   javascript in the header, I should really be manipulating the abstract
   syntax tree for the output HTML.
+- Have automatic download of the schemas from my webpage whenever someone
+  tries to use a tag that's unknown.
+- Along that same line, it would be nice if the schemas were "plugins" in the
+  sense that they were more generic code. People could write plugins that
+  utilized my "API" of functions, or they could write custom code. Right now,
+  any schema that requires non-standard code, I have to write support for. On
+  the other hand, it could be the case that there aren't too many of those...
+- The flat scheme used to identify tags is not very scalable. Maybe something
+  like <news sitename=X> might be better, where X might be slashdot, BBC, etc.
+  Right now the handlers for each tag are identified by the tag name, but this
+  scheme would require identification based on tag and attributes. I'm not
+  sure how to do this cleanly. (Do you know? :)

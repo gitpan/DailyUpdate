@@ -4,7 +4,7 @@ eval 'exec perl -S $0 "$@"'
 
 use vars qw($running_under_some_shell);         # no whining!
 
-# Daily Update, Version 4.5
+# Daily Update, Version 4.6
 
 # DailyUpdate grabs dynamic information from the internet and integrates it
 # into your webpage. Features:
@@ -18,7 +18,7 @@ use vars qw($running_under_some_shell);         # no whining!
 # For examples of more data acquisition schemas, go to
 # http://www.cs.virginia.edu/~dwc3q/code/schemas.html
 
-# This code uses LWP::UserAgent from the libwww library, URI::URL, and
+# This code uses LWP::UserAgent from the libwww library, URI, and
 # HTML::Parser, all of which are available on CPAN at
 # %CPAN%/modules/by-module/LWP/. (Go to http://www.perl.com/ if you don't know
 # how to get to CPAN.)
@@ -57,6 +57,17 @@ use vars qw($running_under_some_shell);         # no whining!
 
 # Version History (major changes only)
 
+# 4.6 Added notification support for new versions. Added -c flag for
+#     user-specified configuration file. Dropped use of POSIX (for NT
+#     compatibility.) Fixed a bug in relative to absolute link conversion.
+#     (Thanks to C. Harald Koch <chk@amdur.com>) URLs can now be of the format
+#     "file://...". Added GetImages acquisition function (thanks to Tanner
+#     Lovelace <lovelace@cs.unc.edu>). Now the %attributes hash can be
+#     referenced in the URL or tag name in the configuration file. Made
+#     changes to the config file to support better schema design. Added "How
+#     to Write Schemas" page at
+#     http://www.cs.virginia.edu/~dwc3q/code/writeschemas.html. Moved to URI
+#     from URI::URL, which is now deprecated.
 # 4.5 Added acquisition function GetHtml. Added -i and -o flags
 #     for input and output files. Now reads old html file only once (faster).
 #     Added "always" schema time option. Now checks script directory for
@@ -90,7 +101,9 @@ use strict;
 # Used to parse the template file
 use HTML::Parser;
 # Used to make relative URLs absolute
-use URI::URL;
+use URI;
+
+my $VERSION = 4.6;
 
 package Main;
 
@@ -106,16 +119,72 @@ use FindBin;
 # it dumps to screen).
 use constant DEBUG => 0;
 
-# Put the directory of the script on the include search path;
-push @INC,$FindBin::Bin;
-require "DailyUpdate_config";
+# ------------------------------------------------------------------------------
+
+sub usage
+{
+<<EOF;
+usage: DailyUpdate [-i inputfile] [-o outputfile] [-c configfile]
+
+-i The template file to use as input (overrides value in configuration file)
+-o The output file (overrides value in configuration file)
+-c The configuration file to use
+EOF
+}
+
+# ------------------------------------------------------------------------------
 
 use vars qw( *OLDOUT $proxy $inHtml $outHtml $scriptTimeout );
 
-if (DEBUG)
+BEGIN
 {
-  $inHtml = "template.html";
-  $outHtml = "daily.html";
+  if (DEBUG)
+  {
+    print "<!--DEBUG: Command line was:-->\n";
+    print "<!--DEBUG:   $0 @ARGV-->\n";
+  }
+
+  # See if the user specified the input and output files on the command line.
+  my %opts;
+  getopt("ioc",\%opts);
+
+  print usage and exit if $opts{h};
+
+  # Put the directory of the script on the include search path;
+  push @INC,$FindBin::Bin;
+
+  if (defined $opts{c})
+  {
+    require "$opts{c}";
+  }
+  else
+  {
+    require "DailyUpdate_config";
+  }
+
+  # Override inHtml and outHtml in the config file if we're in debug mode
+  $inHtml = "template.html" if (DEBUG);
+  $outHtml = "" if (DEBUG);
+
+  # Override both the config and the debug values if the user specified inHtml
+  # or outHtml
+  $inHtml = $opts{i} if defined $opts{i};
+  $outHtml = $opts{o} if defined $opts{o};
+
+  if (DEBUG)
+  {
+    print "<!--DEBUG: Options are:-->\n";
+    foreach my $i (keys %opts)
+    {
+      print "<!--DEBUG:   $i: $opts{$i}-->\n";
+    }
+
+    print "<!--DEBUG: INC is:-->\n";
+    foreach my $i (@INC)
+    {
+      print "<!--DEBUG:   $i-->\n";
+    }
+  }
 }
 
 # Need to derive a parser class from HTML::Parser
@@ -215,24 +284,61 @@ return 1;
 
 # ------------------------------------------------------------------------------
 
+# Searches text for "a href" or "img src" tags and makes them absolute
+sub MakeLinksAbsolute
+{
+my $url = shift;
+my $text = shift;
+
+# First do the ones with quotes, like <a href="X">.
+# It has to start with either <a or <img, then there has to be an href or src
+# followed by whitespace, then an =, some whitespace, and then a ".
+$text =~ s/(<(?:a|img) [^>]*(?:href|src)\s*=\s*")([^">]+)("[^>]*>)/sprintf("$1%s$3",URI->new($2)->abs($url))/egi;
+
+# Now do the ones without quotes, like <a href=X>.
+# It has to start with either <a or <img, then there has to be an href or src
+# followed by whitespace, then an =, some whitespace, the value, and then a
+# space.
+$text =~ s/(<(?:a|img) [^>]*(?:href|src)\s*=\s*)([^"][^ >]+)( [^>]*>)/sprintf("$1%s$3",URI->new($2)->abs($url))/egi;
+
+return $text;
+
+}
+
+# ------------------------------------------------------------------------------
+
+# Gets the entire content from a URL. file:// supported
 sub GetUrl
 {
 my $url = shift;
 
-my $userAgent = new LWP::UserAgent;
-$userAgent->timeout($socketTimeout);
-$userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
-my $request = new HTTP::Request GET => "$url";
-my $result = $userAgent->request($request);
+print "<!-- DEBUG: GetUrl is getting URL: $url -->\n" if (DEBUG);
 
-if (!$result->is_success)
+if ($url =~ /^file:\/\/(.*)/i)
 {
-  # Don't change "Couldn't get". It's used by CachedDataUsable
-  print "Couldn't get data. Error on HTTP request: ".$result->message.".\n";
-  return;
+  open INFILE, $1;
+  my $content = join "",<INFILE>;
+  close INFILE;
+  return $content
 }
+else
+{
+  my $userAgent = new LWP::UserAgent;
+  $userAgent->timeout($socketTimeout);
+  $userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
+  my $request = new HTTP::Request GET => "$url";
+  my $result = $userAgent->request($request);
 
-return $result->content;
+  if (!$result->is_success)
+  {
+    # Don't change "Couldn't get". It's used by CachedDataUsable
+    print "Couldn't get data. Error on HTTP request: ".$result->message.".\n"
+      if (defined $result);
+    return;
+  }
+
+  return $result->content;
+}
 }
 
 # ------------------------------------------------------------------------------
@@ -276,6 +382,49 @@ if ($html eq "")
 
 return ($html);
 }
+
+# ------------------------------------------------------------------------------
+
+sub GetText
+{
+my ($url,$startPattern,$endPattern) = @_;
+
+my $html = &GetUrl($url);
+
+return () if ((!defined $html) || ($html eq ""));
+
+# Strip off all the stuff before and after the start and end patterns
+$html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s
+  if (($startPattern ne "^") && ($endPattern ne "\$"));
+$html =~ s/.*?$startPattern(.*)/$1/s
+  if (($startPattern ne "^") && ($endPattern eq "\$"));
+$html =~ s/(.*?)$endPattern.*/$1/s
+  if (($startPattern eq "^") && ($endPattern ne "\$"));
+
+# Remove all tags
+$html =~ s/<.*?>//gs;
+# Remove all fragments of tags at the beginning
+$html =~ s/^.*>//s;
+
+# Remove all fragments of tags at the end
+$html =~ s/<.*//s;
+
+# Remove starting and ending newlines
+$html =~ s/^\n*(.*?)\n*$/$1/s;
+
+# Remove extra newlines between paragraphs
+$html =~ s/\n\n\n/\n\n/sg;
+
+if ($html eq "")
+{
+  # Don't change "Couldn't get". It's used by CachedDataUsable
+  print "Couldn't get data. GetText pattern resulted in empty string.\n";
+  return;
+};
+
+return ($html);
+}
+
 # ------------------------------------------------------------------------------
 
 # Extracts HTML between startPattern and endPattern. 
@@ -299,16 +448,7 @@ $html =~ s/.*?$startPattern(.*)/$1/s
 $html =~ s/(.*?)$endPattern.*/$1/s
   if (($startPattern eq "^") && ($endPattern ne "\$"));
 
-# Figure out how to make relative links absolute.
-my $baseurl;
-if ($url =~ m#(http://.*?)/# || $url =~ m#(http://.*?)#)
-{
-  $baseurl = $1;
-}
-
-# Change relative tags to absolute
-$baseurl = "$baseurl/" if $baseurl !~ m#/$#;
-$html =~ s/(<(?:a href|img src)\s*=")([^"]+)("[^>]*>)/sprintf("$1%s$3",URI::URL->new($2,$baseurl)->abs)/egi;
+$html = &MakeLinksAbsolute($url,$html);
 
 if ($html eq "")
 {
@@ -321,6 +461,50 @@ return ($html);
 }
 
 #-------------------------------------------------------------------------------
+
+# Extracts all <img...> tags at a given url between startPattern
+# and endPattern.
+# Handles "^" and "\$" to signify start and end of file.
+# Thanks to Tanner Lovelace <lovelace@cs.unc.edu> for writing this
+sub GetImages
+{
+my ($url,$startPattern,$endPattern) = @_;
+
+my $html = &GetUrl($url);
+
+return () if ((!defined $html) || ($html eq ""));
+
+# Strip off all the stuff before and after the start and end patterns
+$html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s
+  if (($startPattern ne "^") && ($endPattern ne "\$"));
+$html =~ s/.*?$startPattern(.*)/$1/s
+  if (($startPattern ne "^") && ($endPattern eq "\$"));
+$html =~ s/(.*?)$endPattern.*/$1/s
+  if (($startPattern eq "^") && ($endPattern ne "\$"));
+
+my @imgTags;
+
+# See if there's a <img...> on this line
+while ($html =~ /(<img .*?>)/sgci)
+{
+  my $imgTag = $1;
+
+  # change relative tags to absolute
+  $imgTag = &MakeLinksAbsolute($url,$imgTag);
+  push @imgTags,$imgTag;
+}
+
+if ($#imgTags == -1)
+{
+  # Don't change "Couldn't get". It's used by CachedDataUsable
+  print "Couldn't get data. GetImg found no images.\n";
+  return;
+}
+
+return @imgTags;
+}
+
+# ------------------------------------------------------------------------------
 
 # Extracts all <a href...>...</a> links at a given url between startPattern
 # and endPattern. Removes all text formatting, and makes relative links
@@ -344,18 +528,6 @@ $html =~ s/.*?$startPattern(.*)/$1/s
 $html =~ s/(.*?)$endPattern.*/$1/s
   if (($startPattern eq "^") && ($endPattern ne "\$"));
 
-# Strip off all the stuff before and after the start and end patterns
-$html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s;
-
-# Figure out how to make relative links absolute.
-my $baseurl;
-if ($url =~ m#(http://.*?)/# || $url =~ m#(http://.*?)#)
-{
-  $baseurl = $1;
-}
-
-$baseurl = "$baseurl/" if $baseurl !~ m#/$#;
-
 my @links;
 
 # See if there's a link on this line
@@ -364,13 +536,10 @@ while ($html =~ /(<a href.*?>.*?<\/a>)/sgci)
   my $link = $1;
 
   # Remove any formatting
-  $link =~ s/< *\/?(font|li|b).*?>//sig;
-
-  # Put quotes around "a href" and "img src" if they don't have it.
-  $link =~ s/<((?:a href|img src)[^>=]+?=)((?!")[^\s>]+)(?!")([^>]*)>/<$1"$2"$3>"/gi;
+  $link =~ s/< *\/?(font|li|b|h[1-9]).*?>//sig;
 
   # change relative tags to absolute
-  $link =~ s/(<(?:a href|img src)\s*=")([^"]+)("[^>]*>)/sprintf("$1%s$3",URI::URL->new($2,$baseurl)->abs)/egi;
+  $link = &MakeLinksAbsolute($url,$link);
 
   push @links,$link;
 }
@@ -387,7 +556,7 @@ return @links;
 
 #-------------------------------------------------------------------------------
 
-# Formats the items in the argument array as an unformatted list
+# Formats the items in the argument array as an unordered list
 sub PrintUnorderedList
 {
   print "<ul>\n";
@@ -396,6 +565,19 @@ sub PrintUnorderedList
     print "  <li> $item\n";
   }
   print "</ul>\n";
+}
+
+#-------------------------------------------------------------------------------
+
+# Formats the items in the argument array as a numbered list
+sub PrintOrderedList
+{
+  print "<ol>\n";
+  while (my $item = shift)
+  {
+    print "  <li> $item\n";
+  }
+  print "</ol>\n";
 }
 
 #-------------------------------------------------------------------------------
@@ -476,6 +658,11 @@ my $getFunction = shift;
 my $filterCode = shift;
 my $outputCode = shift;
 
+# Do an eval on the URL and tag name, in case the user wanted to stick some
+# configuration information into them.
+$url = eval "\"$url\"";
+$tagName = eval "\"$tagName\"";
+
 return if &CachedDataUsable($tagName,@$updateTimes);
 
 my $time = time;
@@ -485,13 +672,15 @@ print "<!-- $tagName ".$time." -->\n";
 my @grabbedData = eval $getFunction;
 print "Warning: Could not parse get function for $tagName.\n" if $@;
 
+return if ($#grabbedData == -1);
+
 print "<!--DEBUG: Acquired ".($#grabbedData+1)." lines of data.-->\n" if (DEBUG);
 
 # Filter the data
 eval $filterCode;
 print "Warning: Could not parse filter function for $tagName.\n" if $@;
 
-if (($#grabbedData == -1) || (($#grabbedData == 0) && ($grabbedData[0] eq "")))
+if ($#grabbedData == -1)
 {
   # Don't change "Couldn't get". It's used by CachedDataUsable
   print "Couldn't get data. Filter code removed all content.\n";
@@ -516,30 +705,40 @@ return;
 sub HandleTime
 {
 my $attribs = shift;
+my ($second,$minute,$hour) = (localtime(time))[0..2];
 
 my $time;
+$minute = "0$minute" if $minute < 10;
+$second = "0$second" if $second < 10;
 
 # Twelve hour is the default
 if ((!defined $attribs->{style}) || ($attribs->{style} =~ /^twelve$/i))
 {
-  $time = POSIX::strftime("%l:%M:%S %p", localtime);
+  my $ending;
+
+  if ($hour > 12)
+  {
+    $ending = "PM";
+    $hour = $hour - 12;
+  }
+  else
+  {
+    $ending = "AM";
+  }
+
+  $time = "$hour:$minute:$second $ending";
 }
 elsif ($attribs->{style} =~ /^twentyfour$/i)
 {
-  $time = POSIX::strftime("%k:%M:%S", localtime);
-}
-
-# If the time is empty, or contains a % (from the strftime) or if it is the
-# exact same as the format string, most likely its not what we wanted
-if ((!$time) || ($time =~ m/\%/)
-   || ((defined $attribs->{style} && $time =~ m/^($attribs->{style})$/))) 
-{
-  print "Warning: Unknown style for time.\n";
+  $time = "$hour:$minute:$second";
 }
 else
 {
-  print $time;
+  print "Warning: Unknown style for time.\n";
+  return;
 }
+
+print $time;
 
 }
 
@@ -554,39 +753,50 @@ else
 sub HandleDate
 {
 my $attribs = shift;
+my ($day,$month,$year,$wday) = (localtime(time))[3..6];
 
-my ($date,@datearray);
+my @weekdays = qw{Sunday Monday Tuesday Wednesday Thursday Friday Saturday};
+my @months = qw{January February March April May June July August September
+                October November December};
 
+my $date;
 if ((!defined $attribs->{style}) || ($attribs->{style} =~ /^day$/i))
 {
-  $date = POSIX::strftime("%A, %B %d", localtime);
+  $date = "$weekdays[$wday], $months[$month] $day";
 }
 elsif ($attribs->{style} =~ /^numeric$/i)
 {
-  $date = POSIX::strftime("%D", localtime);
-  @datearray  = split(/\//,$date);
-  $date = "$datearray[2]$datearray[0]$datearray[1]";
+  $date = $year;
+
+  if ($month < 10)
+  {
+    $date = $date."0".($month+1)
+  }
+  else
+  {
+    $date = $date.($month+1)
+  };
+
+  if ($day < 10) {
+    $date = $date."0".$day
+  }
+  else
+  {
+    $date = $date.($day+1);
+  }
 }
 elsif ($attribs->{style} =~ /^long$/i)
 {
-  $date = POSIX::strftime("%B %d, %Y", localtime);
+  $date = "$months[$month] $day, 19$year";
 }
 else
 {
-  $date = POSIX::strftime($attribs->{style}, localtime);
+  print "Warning: Unknown style for date\n";
+  return;
 }
 
-# If the date is empty, or contains a % (from the strftime) or if it is the
-# exact same as the format string, most likely its not what we wanted.
-if ((!$date) || ($date =~ m/\%/)
-   || ((defined $attribs->{style}) && ($date =~ m/^($attribs->{style})$/))) 
-{
-  print "Warning: Unknown style for date.\n";
-}
-else
-{
-  print $date;
-}
+print $date;
+
 }
 
 # ------------------------------------------------------------------------------
@@ -596,7 +806,7 @@ sub FormatCurrentWeather
 {
 my $currentWeather = shift;
 
-print "<tr>\n <th> Currently </th>\n";
+print "<tr>\n <th valign=top> Currently </th>\n";
 
 ($currentWeather) = $currentWeather =~ /^(  .*)/m;
 
@@ -604,13 +814,13 @@ print "<tr>\n <th> Currently </th>\n";
 $currentWeather =~ s/\bN\/A\b/Not Available/g;
 
 # Print the last part, which should be the skies.
-print " <td> \u\L$1 </td>\n" if ($currentWeather =~ /((\w|\w \w)+)$/);
+print " <td valign=top> \u\L$1 </td>\n" if ($currentWeather =~ /((\w|\w \w)+)$/);
 
 # Print the first part, which should be the temperature.
-print " <td> ",$1,"&#176; </td>\n" if ($currentWeather =~ /^ *(\d+)(?! percent)/);
+print " <td valign=top> ",$1,"&#176; </td>\n" if ($currentWeather =~ /^ *(\d+)(?! percent)/);
 
 # Print the third part, which should be the winds and rain.
-print " <td> \u\L$1</td>\n" if ($currentWeather =~ /^ +\d+   +\S+   +((\w|\w \w)+)  +/);
+print " <td valign=top> \u\L$1</td>\n" if ($currentWeather =~ /^ +\d+   +\S+   +((\w|\w \w)+)  +/);
 
 print "</tr>\n";
 }
@@ -638,7 +848,7 @@ foreach my $day (@days)
 
   $day =~ s/^(.*?)\.\.\.//;
   my $time = $1;
-  print " <th> \u\L$time </th>\n";
+  print " <th valign=top> \u\L$time </th>\n";
 
   # Change multiple periods to single ones
   $day =~ s/\.\.*/\./g;
@@ -649,7 +859,7 @@ foreach my $day (@days)
   my @sentences = split(/\.\s*/,$day);
 
   # Print skies
-  print " <td>";
+  print " <td valign=top>";
   if ($sentences[0] =~ /(HIGH|LOW).*\d\d/)
   {
     print " &nbsp;";
@@ -665,7 +875,7 @@ foreach my $day (@days)
   print " </td>\n";
 
   # Print temperatures
-  print " <td>";
+  print " <td valign=top>";
   if ($sentences[0] !~ /(HIGH|LOW).*\d\d/)
   {
     print " &nbsp;";
@@ -681,7 +891,7 @@ foreach my $day (@days)
   print " </td>\n";
 
   # Print winds and rain
-  print " <td>";
+  print " <td valign=top>";
   if ($#sentences == -1)
   {
     print " &nbsp;";
@@ -743,9 +953,9 @@ if (($forecast eq "") || ($currentWeather eq ""))
 <table width=100%>
 <tr>
  <th></th>
- <th> Skies </th>
- <th> Temperature </th>
- <th> Winds & Rain </th>
+ <th valign=top> Skies </th>
+ <th valign=top> Temperature </th>
+ <th valign=top> Winds & Rain </th>
 </tr>
 EOT
 
@@ -781,12 +991,19 @@ sub start
   {
     if ($tag =~ /^$jump$/i)
     {
-      my $handler = ${$tagToHandler{$jump}}[0];
-      # "&{$handler}" is a function call to the function reference $handler.
-      # The arguments are the attribute list, and the list of data in
-      # $tagToHandler after the function. (That is, from array location 1 to
-      # the end.)
-      &{$handler}($attributeList,@{$tagToHandler{$jump}}[1..$#{$tagToHandler{$jump}}]);
+      # First get the record from the configuration information
+      my @handlerRecord = @{$tagToHandler{$jump}};
+
+      # The handler is the first argument
+      my $handler = shift @handlerRecord;
+
+      # We'll send the attribute list to the handler, along with the arguments
+      # in the config file.
+      my @arguments = ($attributeList,@handlerRecord);
+
+      # Call the handler with the arguments.
+      &{$handler}(@arguments);
+
       $recognizedTag = 1;
       last;
     }
@@ -831,12 +1048,6 @@ if ((!DEBUG) && ($^O ne "MSWin32"))
 
 # Make unbuffered for easier debugging.
 $| = 1 if (DEBUG);
-
-# See if the user specified the input and output files on the command line.
-my %opts;
-getopt("io",\%opts);
-$inHtml = $opts{i} if defined $opts{i};
-$outHtml = $opts{o} if defined $opts{i};
 
 # Store the old STDOUT so we can replace it later.
 open (OLDOUT, ">&STDOUT") if (!DEBUG);

@@ -1,16 +1,24 @@
+# use perl                                  -*- mode: Perl; -*-
+
 # This is the configuration file for DailyUpdate. Feel free to modify any of
 # the values here. You'll most likely want to change the data aquisition
 # schemas for the %tagToHandler structure below. See
 # http://www.cs.virginia.edu/~dwc3q/code/update.html for more information.
+
 # More data acquisition schemas can be found at
 # http://www.cs.virginia.edu/~dwc3q/code/schemas.html.
+# Help on how to write schemas is at
+# http://www.cs.virginia.edu/~dwc3q/code/writeschemas.html.
+
+# PLEASE DO NOT SUBMIT SCHEMAS UNLESS THEY ARE IN THE FORM GIVEN AT
+# http://www.cs.virginia.edu/~dwc3q/code/writeschemas.html.
 
 package Main;
 
 # $inHtml is your template file. $outHtml is the resulting output file
 # Note that these are overridden by the main script if the DEBUG constant is
 # 1.
-$inHtml = "/users/dwc3q/public_html/cgi-bin/template.html";
+$inHtml = "/users/dwc3q/public_html/cgi-bin/template.txt";
 $outHtml = "/users/dwc3q/public_html/daily.html";
 
 # $scripttimeout is the length of time to allow DailyUpdate to run.
@@ -18,7 +26,7 @@ $scriptTimeout = 240;
 
 package dailyUpdateParser;
 
-# Set $proxy if you use a proxy.
+# Set $proxy if you use a proxy. For example, "http://proxy.host.com:8080/"
 $proxy = "";
 
 # $socketTimeout is the length of time to allow any particular web service to
@@ -27,22 +35,19 @@ $socketTimeout = 60;
 
 # This structure specifies the mapping between the tag in the template file
 # and the handler for it. There are a couple of special ones (namely the date,
-# time, and weather), but most use the "HandleGeneric" function.
-
-# The parameters to the HandleGeneric function are:
-# - the hours of the day at which to update the data
-# - the url from which to get the data
-# - the name of the data (used in error messages and output comments)
-# - the function to use to get the data (GetLinks and GetText are good
-#   examples so far. See their comments for more info.)
-# - the code to use to filter the acquired data
-# - the code to use to output the data
+# time, and weather), but most use the "HandleGeneric" function. For more
+# information, see the links mentioned above.
 
 %tagToHandler = (
 
-# <time style=X> Styles:
-#   twentyfour = 14:17:59
-#   twelve = 2:17:59 PM (default)
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: The current time
+# TAG SYNTAX:
+# <time style=X>
+#  X=twentyfour: 14:17:59
+#  X=twelve: 2:17:59 PM (default)
+# SCHEMA:
 "time" =>
 [
   \&HandleTime,
@@ -50,11 +55,15 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <date style=X> Styles:
-#   day = Wednesday, November 7 (default)
-#   numeric = 951107
-#   long = November 7, 1995
-#   any other valid strftime value (see man strftime 3)
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: The current date
+# TAG SYNTAX:
+# <date style=X>
+#  X=day: Wednesday, November 7 (default)
+#  X=numeric: 951107
+#  X=long: November 7, 1995
+# SCHEMA:
 "date" =>
 [
   \&HandleDate,
@@ -62,15 +71,20 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <betanews style=X> Betanews headlines. Styles:
-#   unorderedlist = Bulletted list (default)
-#   twocolumn = Two column table
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Betanews headlines
+# TAG SYNTAX:
+# <betanews style=X> 
+#  X=unorderedlist: Bulletted list (default)
+#  X=twocolumn: Two column table
+# SCHEMA:
 "betanews" =>
 [
   \&HandleGeneric,
   [2,5,8,11,14,17,20,23],
-  "http://www.betanews.com/main.txt",
-  "Betanews",
+  'http://www.betanews.com/main.txt',
+  'Betanews',
   '&GetHtml($url,"(?i)main news","\$")',
   # Split the webpage up along the <line>s. Drop the text returned by GetHtml.
   # Create a link from the line containing the <bold>, and the link on the last
@@ -86,15 +100,20 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <apnews style=X> AP News from Yahoo. Styles:
-#   unorderedlist = Bulletted list (default)
-#   twocolumn = Two column table
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Associated Press Headlines from Yahoo
+# TAG SYNTAX:
+# <apnews style=X>
+#  X=unorderedlist: Bulletted list (default)
+#  X=twocolumn: Two column table
+# SCHEMA:
 "apnews" =>
 [
   \&HandleGeneric,
   [2,5,8,11,14,17,20,23],
-  "http://dailynews.yahoo.com/headlines/top_stories/ap/index.html",
-  "AP News",
+  'http://dailynews.yahoo.com/headlines/top_stories/ap/index.html',
+  'AP News',
   '&GetLinks($url,"ap_headlines","<hr")',
   '',
   '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
@@ -102,16 +121,21 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <slashdot style=X> Slashdot Headlines Styles:
-#   unorderedlist = Bulletted list
-#   twocolumn = Two column table
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Slashdot Headlines
+# TAG SYNTAX:
+# <slashdot style=X>
+#  X=unorderedlist: Bulletted list (default)
+#  X=twocolumn: Two column table
+# SCHEMA:
 "slashdot" =>
 [
   \&HandleGeneric,
   [2,5,8,11,14,17,20,23],
-  "http://www.slashdot.org/ultramode.txt",
-  "Slashdot Headlines",
-  '&GetText($url,"%%\n","\$")',
+  'http://www.slashdot.org/ultramode.txt',
+  'Slashdot Headlines',
+  '&GetText($url,"^","\$")',
   # Take the text from ultramode. Look for the two lines after %%. When you
   # see them, push a <a href> onto @grabbedData. shift the original text
   # from GetText off of @grabbedData. Output the list or columns based on
@@ -123,16 +147,21 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <freshmeat style=X> Freshmeat news. Styles:
-#   unorderedlist = Bulletted list
-#   twocolumn = Two column table
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Freshmeat news
+# TAG SYNTAX:
+# <freshmeat style=X>
+#  X=unorderedlist: Bulletted list (default)
+#  X=twocolumn: Two column table
+# SCHEMA:
 "freshmeat" =>
 [
   \&HandleGeneric,
   [2,5,8,11,14,17,20,23],
-  #"http://files.freshmeat.net/freshmeat/recentnews.txt",
-  "ftp://ftp.freshmeat.net/pub/files/freshmeat/recentnews.txt",
-  "Freshmeat News",
+  #'http://files.freshmeat.net/freshmeat/recentnews.txt',
+  'ftp://ftp.freshmeat.net/pub/files/freshmeat/recentnews.txt',
+  'Freshmeat News',
   '&GetText($url,"^","\$")',
   # Take the plain text. Look for the first and third lines. When you
   # see them, push a <a href> onto @grabbedData. shift the original text
@@ -145,15 +174,20 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <cnnsports style=X> CNN/Sports Illustrated sports headlines. Styles:
-#   unorderedlist = Bulletted list (default)
-#   twocolumn = Two column table
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: CNN/Sports Illustrated sports headlines
+# TAG SYNTAX:
+# <cnnsports style=X>
+#  X=unorderedlist: Bulletted list (default)
+#  X=twocolumn: Two column table
+# SCHEMA:
 "cnnsports" =>
 [
   \&HandleGeneric,
   [2,5,8,11,14,17,20,23],
-  "http://www.cnnsi.com/",
-  "CNN/SI Sports",
+  'http://www.cnnsi.com/',
+  'CNN/SI Sports',
   '&GetLinks($url,"topstories","transactions")',
   '',
   '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
@@ -161,15 +195,20 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <yahoolinuxnews style=X> Yahoo's Linux headlines. Styles:
-#   unorderedlist = Bulletted list
-#   twocolumn = Two column table
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Yahoo's Linux headlines
+# TAG SYNTAX:
+# <yahoolinuxnews style=X>
+#  X=unorderedlist: Bulletted list (default)
+#  X=twocolumn: Two column table
+# SCHEMA:
 "yahoolinuxnews" =>
 [
   \&HandleGeneric,
   [2,5,8,11,14,17,20,23],
-  "http://headlines.yahoo.com/Full_Coverage/Tech/Linux/",
-  "Yahoo Linux News",
+  'http://headlines.yahoo.com/Full_Coverage/Tech/Linux/',
+  'Yahoo Linux News',
   '&GetLinks($url,"(?i)news stories","(?i)\n</table>")',
   '',
   '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
@@ -177,15 +216,20 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <wirednews style=X> Wired headlines. Styles:
-#   unorderedlist = Bulletted list (default)
-#   twocolumn = Two column table
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Wired News Headlines
+# TAG SYNTAX:
+# <wirednews style=X>
+#  X=unorderedlist: Bulletted list (default)
+#  X=twocolumn: Two column table
+# SCHEMA:
 "wirednews" =>
 [
   \&HandleGeneric,
   [2,5,8,11,14,17,20,23],
-  "http://www.wired.com/news/",
-  "Wired News",
+  'http://www.wired.com/news/',
+  'Wired News',
   '&GetLinks($url,"(?i)other top stories","(?i)----trades----")',
   # Here I'm deleting some bogus links before outputting the results.
   '@grabbedData = grep {!/">in/} @grabbedData',
@@ -194,15 +238,20 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <linuxtoday style=X> Linux Today headlines. Styles:
-#   unorderedlist = Bulletted list
-#   twocolumn = Two column table
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Linux Today headlines.
+# TAG SYNTAX:
+# <linuxtoday style=X>
+#  X=unorderedlist: Bulletted list (default)
+#  X=twocolumn: Two column table
+# SCHEMA:
 "linuxtoday" =>
 [
   \&HandleGeneric,
   [2,5,8,11,14,17,20,23],
-  "http://linuxtoday.com/lthead.inc",
-  "Linux Today Headlines",
+  'http://linuxtoday.com/lthead.inc',
+  'Linux Today Headlines',
   '&GetLinks($url,"^","\$")',
   '',
   '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
@@ -210,15 +259,20 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <infoworld style=X> Infoworld headlines. Styles:
-#   unorderedlist = Bulletted list
-#   twocolumn = Two column table
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Infoworld headlines.
+# TAG SYNTAX:
+# <infoworld style=X>
+#  X=unorderedlist: Bulletted list (default)
+#  X=twocolumn: Two column table
+# SCHEMA:
 "infoworld" =>
 [
   \&HandleGeneric,
   [2,5,8,11,14,17,20,23],
-  "http://www.infoworld.com/",
-  "Infoworld Top News Stories",
+  'http://www.infoworld.com/',
+  'Infoworld Top News Stories',
   '&GetLinks($url,"(?i)merge below","(?i)merge above")',
   '',
   '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
@@ -226,7 +280,13 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <weather url=X> Url is the NWS text file for your city.
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: National Weather Service weather.
+# TAG SYNTAX:
+# <weather url=X>
+#  X=URL of the NWS text file for the city
+# SCHEMA:
 "weather" =>
 [
   \&HandleWeather,
@@ -236,13 +296,18 @@ $socketTimeout = 60;
 
 #-------------------------------------------------------------------------------
 
-# <coolsite> Cool Site of the day.
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Cool Site of the day
+# TAG SYNTAX:
+# <coolsite>
+# SCHEMA:
 "coolsite" =>
 [
   \&HandleGeneric,
   [7],
-  "http://www.cool.infi.net/frmindex.html",
-  "Cool Site of the Day",
+  'http://www.cool.infi.net/frmindex.html',
+  'Cool Site of the Day',
   '&GetText($url,"(?i)insert cool site here.*src=\"","\">")',
   '',
   'print <<EOF;
@@ -255,13 +320,18 @@ EOF
 
 #-------------------------------------------------------------------------------
 
-# <uselessfact> Useless Fact of the day.
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Useless Fact of the day
+# TAG SYNTAX:
+# <uselessfact>
+# SCHEMA:
 "uselessfact" =>
 [
   \&HandleGeneric,
   [7],
-  "http://www.southhouse.com/useless/",
-  "Useless Fact of the Day",
+  'http://www.southhouse.com/useless/',
+  'Useless Fact of the Day',
   '&GetText($url,"(?i)white.*arial","(?i)</font>")',
   '',
   'print ("$grabbedData[0]\n")',
@@ -269,13 +339,18 @@ EOF
 
 #-------------------------------------------------------------------------------
 
-# <dilbert> Dilbert comic image link
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Dilbert comic image link
+# TAG SYNTAX:
+# <dilbert>
+# SCHEMA:
 "dilbert" =>
 [
   \&HandleGeneric,
   [7],
-  "http://www.unitedmedia.com/comics/dilbert/index.html",
-  "Dilbert",
+  'http://www.unitedmedia.com/comics/dilbert/index.html',
+  'Dilbert',
   '&GetLinks($url,"(?i)today\'s strip","(?i)</td>")',
   '',
   'print "  $grabbedData[0]\n"',
@@ -283,13 +358,18 @@ EOF
 
 #-------------------------------------------------------------------------------
 
-# <calvin> Calvin and Hobbes comic image link
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Calvin and Hobbes comic image link
+# TAG SYNTAX:
+# <calvin>
+# SCHEMA:
 "calvin" =>
 [
   \&HandleGeneric,
   [7],
-  "http://www.uexpress.com/ups/comics/ch/",
-  "Calvin and Hobbes",
+  'http://www.uexpress.com/ups/comics/ch/',
+  'Calvin and Hobbes',
   '&GetLinks($url,"(?i)comic strip","(?i)<br")',
   '',
   'print "  $grabbedData[0]\n"',
@@ -297,13 +377,18 @@ EOF
 
 #-------------------------------------------------------------------------------
 
-# <userfriendly> User Friendly comic image link
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: User Friendly comic image link
+# TAG SYNTAX:
+# <userfriendly>
+# SCHEMA:
 "userfriendly" =>
 [
   \&HandleGeneric,
   [7],
-  "http://www.userfriendly.org/static/",
-  "User Friendly",
+  'http://www.userfriendly.org/static/',
+  'User Friendly',
   '&GetLinks($url,"(?i)<hr size=\"6\">","(?i)<font")',
   '',
   'print "  $grabbedData[0]\n"',
@@ -311,13 +396,18 @@ EOF
 
 #-------------------------------------------------------------------------------
 
-# <adam> Adam@Home comic image link
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Adam@Home comic image link
+# TAG SYNTAX:
+# <adam>
+# SCHEMA:
 adam =>
 [
   \&HandleGeneric,
   [7],
-  "http://www.uexpress.com/ups/comics/ad/",
-  "Adam\@Home",
+  'http://www.uexpress.com/ups/comics/ad/',
+  'Adam\@Home',
   '&GetLinks($url,"ENDxx>","</TABLE")',
   '',
   'print "  $grabbedData[0]\n"',
@@ -325,13 +415,18 @@ adam =>
 
 #-------------------------------------------------------------------------------
 
-# <yahoostockindices> Yahoo composite indices
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Yahoo's composite stock indices
+# TAG SYNTAX:
+# <yahoostockindices> 
+# SCHEMA:
 yahoostockindices =>
 [
   \&HandleGeneric,
   [7],
-  "http://quote.yahoo.com/",
-  "Yahoo Stock Indices",
+  'http://quote.yahoo.com/',
+  'Yahoo Stock Indices',
   '&GetHtml($url,"\n<p>","\n<p>")',
   '',
   'print "  $grabbedData[0]\n"',
@@ -339,22 +434,112 @@ yahoostockindices =>
 
 #-------------------------------------------------------------------------------
 
-# <yahoostockquote> Quote for a stock
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Yahoo's stock information
+# TAG SYNTAX:
+# <yahoostockquote stock=X style=Y>
+#  X:stock identifier (mandatory)
+#  Y=short: displays stock identifier and current value
+#  Y=tabular: displays a table of stock information
+# SCHEMA:
 yahoostockquote =>
 [
   \&HandleGeneric,
   ["always"],
-  "http://quote.yahoo.com/",
-  "Yahoo Stock Indices",
-  '&GetHtml($url."q?s=$attributes->{stock}&d=v1","\n<p>(?!<)","\n<p>\n")',
+  'http://quote.yahoo.com/',
+  'Yahoo Stock Indices',
+  '&GetHtml($url."q?s=$attributes->{stock}&d=v1","<p>\n(?!<)","\n<p>\n")',
   'if ($attributes->{style} =~ /short/i)
   {
     $grabbedData[0] =~ s/.*?(<a href.*?<\/a>).*?<b>(.*?)<\/b>.*/$1 $2/si;
   }
-  elsif ($attributes->{style} !~ /(short|tablular)/i)
+  elsif ((defined $attributes->{style}) && ($attributes->{style} !~ /(short|tabular)/i))
   {
     print "WARNING: Unknown style for yahoostockquote.<br>\n";
   }',
+  'print "  $grabbedData[0]\n"',
+],
+
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Get the latest version number for DailyUpdate
+# TAG SYNTAX:
+# <dailyupdateversion notifyonly>
+#  notifyonly: If specified, outputs a message when a new version of
+#    DailyUpdate is released. If unspecified, prints the current version.
+# SCHEMA:
+dailyupdateversion =>
+[
+  \&HandleGeneric,
+  [12],
+  'http://www.cs.virginia.edu/~dwc3q/code/dailyupdateinfo.txt',
+  'Daily Update Version Number',
+  '&GetText($url,"Version: ","\n")',
+  'if (defined $attributes->{notifyonly})
+  {
+    if (($VERSION cmp $grabbedData[0]) == -1)
+    {
+      $grabbedData[0] = "There\'s a new version of DailyUpdate ($grabbedData[0]).";
+    }
+    else
+    {
+      $grabbedData[0] = "";
+    }
+  }
+  else
+  {
+    $grabbedData[0] = "Most recent DailyUpdate Version: $grabbedData[0]";
+  }',
+  'print "  $grabbedData[0]\n"',
+],
+
+# AUTHOR: David Coppit
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Get the headlines from The Register
+# TAG SYNTAX:
+# <registernews style=X>
+#  X=unorderedlist: Bulletted list (default)
+#  X=twocolumn: Two column table
+# SCHEMA:
+"registernews" =>
+[
+  \&HandleGeneric,
+  [2,5,8,11,14,17,20,23],
+  'http://www.theregister.co.uk/',
+  'The Register News',
+  '&GetLinks($url,"font face","href=\"morenews")',
+  '@grabbedData = grep {!/<img/i} @grabbedData',
+  '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+],
+
+# AUTHOR: David Coppit (original idea from Tanner Lovelace
+#    <lovelace@cs.unc.edu>)
+# EMAIL: coppit@cs.virginia.edu
+# ONE LINE DESCRIPTION: Get any United Media comic strip
+# TAG SYNTAX:
+# <unitedmediacomic strip=X>
+#  X=one of (alleyoop, arlonjanis, betty, bignate, bornloser, buckets,
+#  committed, drabble, eeknmeed, fatcats, forbetter, franknernest, grizzwells,
+#  herman, jumpstart, kitncarlyle, luann, marmaduke, meatloaf, meg, nancy
+#  nohuddle, hedge, reality, ripleys, robotman, roseisrose, tarzan,
+#  topofworld, warped)
+# SCHEMA:
+unitedmediacomic =>
+[
+  \&HandleGeneric,
+  [12],
+  'http://umweb2.unitedmedia.com/comics/$attributes->{strip}/ab.html',
+  'United Media Comic - $attributes->{strip}',
+  'if (!defined $attributes->{strip})
+   {
+     print "WARNING: STRIP attribute must be defined for unitedmedia tag\n";
+   }
+   else
+   {
+     &GetImages($url,"(?i)<!-- comic strip -->","(?i)</td>");
+   }',
+  '',
   'print "  $grabbedData[0]\n"',
 ],
 
