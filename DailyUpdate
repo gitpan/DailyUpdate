@@ -1,17 +1,18 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -w
 
-# Daily Update, Version 4.1
+# Daily Update, Version 4.2
 
 # DailyUpdate grabs dynamic information from the internet and integrates it
 # into your webpage. Features:
-# - Timeouts to handle dead servers without hanging the script
+# - Timeouts to handle dead servers without hanging the script (Script timer
+#   doesn't work on Windows platforms since they don't have fork().)
 # - User-defined update times
 # - Modular design allows easy extension to new data sources
 # - Compatible with cgi-wrap (if you want to call it on-the-fly)
 
 # For documentation, go to http://www.cs.virginia.edu/~dwc3q/code/update.html
 
-# This code uses LWP::UserAgent and HTML::Parse from the libwww library,
+# This code uses LWP::UserAgent and HTML::Parser from the libwww library,
 # available on CPAN at %CPAN%/modules/by-module/LWP/.
 
 # I suggest using wwwis by Alex Knowles if your file contains a lot of images,
@@ -49,6 +50,11 @@
 # http://www.opensource.org/gpl-license.html and http://www.opensource.org/.
 
 # Version History (major changes only)
+# 4.2 Added Linux Today.  Modified GetText & GetLinks to take "^" and "\$"
+#     signifying start and end of file. Added proxy support. (Thanks to Meng
+#     Kuan <mkchew@mas.gov.sg>) Fork is now disabled on Windows platforms.
+#     Added time tag (thanks to Nils Jeppe <nils@providence.work.de>). Moved
+#     from HTML::Parse to HTML::Parser.
 # 4.1 Added User Friendly and Freshmeat. Fixed slashdot to take a style.
 #     Modified GetText to take "^" and "\$" signifying start and end of file.
 #     Changed the script to use LWP's get instead of my GetUrl. (reuse!)
@@ -72,6 +78,9 @@
 #   day = Wednesday, November 7
 #   numeric = 951107
 #   long = November 7, 1995
+# <time style=X> Styles:
+#   twentyfour = 14:17:59
+#   twelve = 2:17:59 PM
 # <weather>
 # <apnews style=X> AP News from Yahoo. Styles:
 #   unorderedlist = Bulletted list
@@ -84,10 +93,15 @@
 # <wirednews style=X> Wired headlines. Styles:
 #   unorderedlist = Bulletted list
 #   twocolumn = Two column table
+# <linuxtoday style=X> Linux Today headlines. Styles:
+#   unorderedlist = Bulletted list
+#   twocolumn = Two column table
 
 require 5.001;
 use strict;
-use HTML::Parse;
+# Used to parse the template file
+use HTML::Parser;
+# Used to make relative URLs absolute
 use URI::URL;
 
 package Main;
@@ -97,7 +111,12 @@ package Main;
 # it dumps to screen).
 use constant DEBUG => 0;
 
+use vars qw( *OLDOUT );
+
 # ------------------------- You can modify this stuff -------------------------
+
+# Set $proxy if you use a proxy.
+my $proxy = "";
 
 # $socketTimeout is the length of time to allow any particular web service to
 #   respond.
@@ -132,11 +151,15 @@ package dailyUpdateParser;
 #   examples so far. See their comments for more info.)
 # - the function to use to output the data
 my %tagToHandler = (
-  date =>
+  "time" =>
+  [
+    \&HandleTime,
+  ],
+  "date" =>
   [
     \&HandleDate,
   ],
-  apnews =>
+  "apnews" =>
   [
     \&HandleGeneric,
     [2,5,8,11,14,17,20,23],
@@ -145,7 +168,7 @@ my %tagToHandler = (
     '&GetLinks($url,"ap_headlines","<hr")',
     '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
   ],
-  dilbert =>
+  "dilbert" =>
   [
     \&HandleGeneric,
     [7],
@@ -154,7 +177,7 @@ my %tagToHandler = (
     '&GetLinks($url,"(?i)today\'s strip","(?i)</td>")',
     'print "  $grabbedData[0]\n"',
   ],
-  calvin =>
+  "calvin" =>
   [
     \&HandleGeneric,
     [7],
@@ -163,7 +186,7 @@ my %tagToHandler = (
     '&GetLinks($url,"(?i)comic strip","(?i)<br")',
     'print "  $grabbedData[0]\n"',
   ],
-  userfriendly =>
+  "userfriendly" =>
   [
     \&HandleGeneric,
     [7],
@@ -172,7 +195,7 @@ my %tagToHandler = (
     '&GetLinks($url,"(?i)<hr size=\"6\">","(?i)<font")',
     'print "  $grabbedData[0]\n"',
   ],
-  slashdot =>
+  "slashdot" =>
   [
     \&HandleGeneric,
     [2,5,8,11,14,17,20,23],
@@ -185,7 +208,7 @@ my %tagToHandler = (
     # the style.
     '$grabbedData[0] =~ s/\%\%\n(.*?)\n(.*?)\n/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData;&OutputListOrColumns($attributes,$tagName,@grabbedData)',
   ],
-  freshmeat =>
+  "freshmeat" =>
   [
     \&HandleGeneric,
     [2,5,8,11,14,17,20,23],
@@ -199,7 +222,7 @@ my %tagToHandler = (
     # the style.
     '$grabbedData[0] =~ s/([^\n]+)\n[^\n]+\n([^\n]+)/push @grabbedData,"<a href=\"$2\">$1<\/a>"/eg;shift @grabbedData;&OutputListOrColumns($attributes,$tagName,@grabbedData)',
   ],
-  cnnsports =>
+  "cnnsports" =>
   [
     \&HandleGeneric,
     [2,5,8,11,14,17,20,23],
@@ -208,7 +231,16 @@ my %tagToHandler = (
     '&GetLinks($url,"topstories","transactions")',
     '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
   ],
-  wirednews =>
+  "linuxtoday" =>
+  [
+    \&HandleGeneric,
+    [2,5,8,11,14,17,20,23],
+    "http://linuxtoday.com/lthead.inc",
+    "Linux Today Headlines",
+    '&GetLinks($url,"^","\$")',
+    '&OutputListOrColumns($attributes,$tagName,@grabbedData)',
+  ],
+  "wirednews" =>
   [
     \&HandleGeneric,
     [2,5,8,11,14,17,20,23],
@@ -218,14 +250,14 @@ my %tagToHandler = (
     # Here I'm deleting some bogus links before outputting the results.
     '@grabbedData = grep {!/">in/} @grabbedData;&OutputListOrColumns($attributes,$tagName,@grabbedData)',
   ],
-  weather =>
+  "weather" =>
   [
     \&HandleWeather,
     [5,11,16],
     "http://cirrus.sprl.umich.edu/wxnet/fcst/charlottesville.txt",
     "NWS Weather",
   ],
-  coolsite =>
+  "coolsite" =>
   [
     \&HandleGeneric,
     [7],
@@ -239,7 +271,7 @@ my %tagToHandler = (
 EOF
 ',
   ],
-  uselessfact =>
+  "uselessfact" =>
   [
     \&HandleGeneric,
     [7],
@@ -341,16 +373,19 @@ my ($url,$startPattern,$endPattern) = @_;
 
 my $userAgent = new LWP::UserAgent;
 $userAgent->timeout($socketTimeout);
+$userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
 my $request = new HTTP::Request GET => "$url";
 my $html = $userAgent->request($request)->content;
 
-return () if ((!defined $html) || ($html !~ /$startPattern.*$endPattern/s));
+return () if (!defined $html);
 
 # Strip off all the stuff before and after the start and end patterns
 $html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s
   if (($startPattern ne "^") && ($endPattern ne "\$"));
-$html =~ s/.*?$startPattern(.*)/$1/s if ($endPattern eq "\$");
-$html =~ s/(.*?)$endPattern.*/$1/s if ($startPattern eq "^");
+$html =~ s/.*?$startPattern(.*)/$1/s
+  if (($startPattern ne "^") && ($endPattern eq "\$"));
+$html =~ s/(.*?)$endPattern.*/$1/s
+  if (($startPattern eq "^") && ($endPattern ne "\$"));
 
 # Remove all tags
 $html =~ s/<.*?>//gs;
@@ -376,16 +411,27 @@ return ($html);
 # and endPattern. Removes all text formatting, and makes relative links
 # absolute. Puts quotes around attribute values in stuff like <a href=blah> and
 # <img src=blah>.
+
+# Now handles "^" and "\$" to signify start and end of file.
 sub GetLinks
 {
 my ($url,$startPattern,$endPattern) = @_;
 
 my $userAgent = new LWP::UserAgent;
 $userAgent->timeout($socketTimeout);
+$userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
 my $request = new HTTP::Request GET => "$url";
 my $html = $userAgent->request($request)->content;
 
-return () if ((!defined $html) || ($html !~ /$startPattern.*$endPattern/s));
+return () if (!defined $html);
+
+# Strip off all the stuff before and after the start and end patterns
+$html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s
+  if (($startPattern ne "^") && ($endPattern ne "\$"));
+$html =~ s/.*?$startPattern(.*)/$1/s
+  if (($startPattern ne "^") && ($endPattern eq "\$"));
+$html =~ s/(.*?)$endPattern.*/$1/s
+  if (($startPattern eq "^") && ($endPattern ne "\$"));
 
 # Strip off all the stuff before and after the start and end patterns
 $html =~ s/.*?$startPattern(.*?)$endPattern.*/$1/s;
@@ -445,7 +491,7 @@ sub PrintTwoColumns
 
   my $secondColumn = $#items;
 
-  print ("<tr>\n  <td valign=top>\n");
+  print ("<tr>\n  <td width=50% valign=top>\n");
 
   for (my $index=0;$index < int($#items/2)+1;$index++)
   {
@@ -529,6 +575,50 @@ eval $outputFunction;
 
 print "<!-- $tagName ".$time." -->\n";
 return 0;
+}
+
+#-------------------------------------------------------------------------------
+
+# Output the time in the following formats, depending on the parameter
+# passed:
+# style=twentyfour: 14:17:59
+# style=twelve: 2:17:59 PM
+
+sub HandleTime
+{
+my $attribs = shift;
+my ($second,$minute,$hour) = (localtime(time))[0..2];
+
+my $time;
+
+$minute = "0$minute" if $minute < 10;
+$second = "0$second" if $second < 10;
+
+if ($attribs->{style} =~ /^twentyfour$/i)
+{
+  $time = "$hour:$minute:$second";
+}
+elsif ($attribs->{style} =~ /^twelve$/i)
+{
+  my $suffix;
+
+  if ($hour < 12) {
+    $suffix = "AM";
+  }
+  else
+  {
+    $suffix = "PM";
+    $hour = $hour-12;
+  }
+  $time = "$hour:$minute:$second $suffix";
+}
+else
+{
+  print "Warning: Unknown style for time\n";
+}
+
+print $time;
+
 }
 
 #-------------------------------------------------------------------------------
@@ -710,6 +800,7 @@ print "<!-- $tagName ".$time." -->\n";
 
 my $userAgent = new LWP::UserAgent;
 $userAgent->timeout($socketTimeout);
+$userAgent->proxy(['http', 'ftp'], $proxy) if $proxy ne "";
 my $request = new HTTP::Request GET => "$url";
 my $html = $userAgent->request($request)->content;
 
@@ -750,9 +841,6 @@ return 0;
 
 # This is the parser code. Basically, everything gets passed through except
 # certain tags, which are caught by the overridden "start" function.
-
-# Let the parser treat the custom tags as normal ones.
-$HTML::Parser::IGNORE_UNKNOWN = 0;
 
 # Basically pass everything through except the special tags.
 sub text { print "$_[1]"; }
@@ -798,7 +886,7 @@ sub start
 package Main;
 
 # Disable the timers if in debug mode
-if (!DEBUG)
+if ((!DEBUG) && ($^O ne "MSWin32"))
 {
   if ((my $scriptpid = fork) != 0) 
   {
@@ -824,7 +912,7 @@ if (!DEBUG)
 $| = 1 if (DEBUG);
 
 # Store the old STDOUT so we can replace it later.
-open (OLDOUT, ">&STDOUT");
+open (OLDOUT, ">&STDOUT") if (!DEBUG);
 
 # Redirect STDOUT to a temp file.
 open (STDOUT,">".$outHtml.".temp") if (!DEBUG);
@@ -838,7 +926,7 @@ $p->parse_file($inHtml);
 if (!DEBUG)
 {
   close (STDOUT);
-  open(STDOUT, ">&OLDOUT") or die "Can't open output file.\n";
+  open(STDOUT, ">&OLDOUT") or die "Can't restore STDOUT.\n";
 
   # Replace the output file with the temp file.
   unlink $outHtml;

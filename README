@@ -7,12 +7,14 @@ information acquired from the internet.
 DailyUpdate needs libwww for Perl. Get it from CPAN at
 %CPAN%/modules/by-module/LWP/.
 
+New in version 4.2: Added "linuxtoday", and "time".  Modified GetText &
+GetLinks to take "^" and "\$" signifying start and end of file. Added proxy
+support. Fork is now disabled on Windows platforms. Moved from HTML::Parse to
+HTML::Parser.
+
 New in version 4.1: Added "User Friendly" and "Freshmeat" support. Fixed
 Slashdot so that it takes a style. Changed it to use LWP instead of my own
 HTTP sockets stuff.
-
-New in version 4.0: This is a total rewrite, resulting in a modular,
-extensible script that is half the size of the previous version.
 
 Written by David Coppit (coppit@cs.virginia.edu,
   http://www.cs.virginia.edu/~dwc3q/index.html)
