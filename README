@@ -1,4 +1,4 @@
-DailyUpdate version 5.0.1
+DailyUpdate version 5.0.2
 
 DailyUpdate is an information integrator. It creates a custom web page from a
 template HTML file with special tags, replacing those tags with dynamic
@@ -12,6 +12,12 @@ everything but the kitchen sink.
 
 
 CHANGES
+
+New in version 5.0.2: 
+- Fixed data caching.
+- MakeHandler.pl now stores the URL in the comment block.
+- Created POD documentation in DailyUpdate.pl
+- Fixed a problem with the loading of configuration information
 
 New in version 5.0.1: 
 - Fixed a bug in MakeHandler.pl

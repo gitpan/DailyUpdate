@@ -10,6 +10,8 @@ package DailyUpdate::Handler;
 
 # To use it, subclass it and redefine the Get, Filter, and Output methods. 
 
+# For timelocal
+use Time::Local;
 use strict;
 use Carp;
 
@@ -78,15 +80,15 @@ sub CachedDataUsable
     if (DEBUG && !-e $main::config{outHtml});
   return 0 unless -e $main::config{outHtml};
 
-  if (!defined $self->{"_OLDHTML"})
+  if (!defined ${$self->{"_OLDHTML"}})
   {
     open (OLDHTML,$main::config{outHtml}) or die "Can't open output file!\n";
-    $self->{"_OLDHTML"} = join "",<OLDHTML>;
+    ${$self->{"_OLDHTML"}} = join "",<OLDHTML>;
     close (OLDHTML);
   }
 
   # Make a local copy of the old html
-  my $oldHtml = $self->{"_OLDHTML"};
+  my $oldHtml = ${$self->{"_OLDHTML"}};
 
   my $lastUpdated;
 

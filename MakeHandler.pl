@@ -112,6 +112,7 @@ print <<EOF;
 # AUTHOR: $author
 # EMAIL: $email
 # ONE LINE DESCRIPTION: $description
+# URL: $url
 # TAG SYNTAX:
 # $syntax
 

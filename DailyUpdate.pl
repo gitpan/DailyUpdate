@@ -5,7 +5,7 @@ eval 'exec perl -S $0 "$@"'
 
 use vars qw($running_under_some_shell);         # no whining!
 
-# Daily Update, Version 5.0.1
+# Daily Update, Version 5.0.2
 
 # Daily Update grabs dynamic information from the internet and integrates it
 # into your webpage. Features:
@@ -77,7 +77,7 @@ use Getopt::Std;
 use FindBin;
 
 use vars qw( $VERSION );
-$VERSION = '5.0.1';
+$VERSION = '5.0.2';
 
 # ------------------------------------------------------------------------------
 
@@ -110,6 +110,9 @@ BEGIN
 
   print usage and exit if $opts{h};
 
+  # Make sure the directory of the script is on INC
+  unshift @INC,$FindBin::Bin;
+
   if (defined $opts{c})
   {
     require "$opts{c}";
@@ -119,13 +122,14 @@ BEGIN
     require 'DailyUpdate.cfg';
   }
 
-  # Put the directory of the script on the include search path;
+  # Take off script directory, because we want to put the handlerlocations
+  # after it.
+  shift @INC;
+
+  # Put the directory of the script on the include search path
   unshift (@{$config{handlerlocations}},$FindBin::Bin);
 
   unshift @INC,@{$config{handlerlocations}};
-
-  # Override outHtml in the config file if we're in debug mode
-  $config{outHtml} = '' if (DEBUG);
 
   # Override both the config and the debug values if the user specified inHtml
   # or outHtml
@@ -216,3 +220,172 @@ if (!DEBUG)
     close INFILE;
   }
 }
+
+#-------------------------------------------------------------------------------
+
+=head1 NAME
+
+Daily Update - downloads and integrates dynamic information into your webpage
+
+=head1 SYNOPSIS
+
+DailyUpdate.pl [-i inputfile] [-o outputfile] [-c configfile]
+
+=head1 DESCRIPTION
+
+I<Daily Update> grabs dynamic information from the internet and integrates it
+into your webpage. Features include modular extensibility, timeouts to handle
+dead servers without hanging the script, user-defined update times, automatic
+installation of modules, and compatibility with cgi-wrap. 
+
+Daily Update takes an input HTML file, which includes special tags of the
+form \<dailyupdate name=X\>. I<X> represents a data source, such as "apnews",
+"weather", etc. When such a tag is encountered, Daily Update attempts to
+load and execute the handler to acquire the data, replacing the tag with the
+data. If the handler can not be found, the script asks for permission to
+attempt to download it from the central repository at
+http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/handlers.html.
+
+The output contains comment tags with timestamps, which are used by the script
+to determine when the data needs to be refreshed. Update times are specified
+in the configuration file, which also allows one to specify the input and
+output files, and proxy settings.
+
+=head1 HANDLERS
+
+Daily Update has a modular architecture, in which I<handlers> implement the
+acquisition and output of data gathered from the internet. To use new data
+sources, first locate an interesting one at
+http://www.cs.virginia.edu/~dwc3q/code/DailyUpdate/handlers.html, then place
+the tag \<dailyupdate name=NAME\> in your input file. Then run Daily Update
+once manually, and it will prompt you for permission to download and install
+the handler.
+
+To help handler developers, a utility called I<MakeHandler.pl> is included with
+the Daily Update distribution. It is a generator that asks several questions,
+and then creates a basic handler.  Handler development is supported by two
+APIs, I<AcquisitionFunctions> and I<OutputFunctions>.
+
+AcquisitionFunctions consists of:
+
+=over 2
+
+=item *
+
+GetUrl: Grabs all the content from a URL 
+
+=item *
+
+GetText: Grabs text data from a block of HTML, without formatting 
+
+=item *
+
+GetHtml: Grabs a block of HTML from a URL's content 
+
+=item *
+
+GetImages: Grabs images from a block of HTML 
+
+=item *
+
+GetLinks: Grabs hyperlinks from a block of HTML 
+
+=back
+
+
+OutputFunctions consists of:
+
+=over 2
+
+=item *
+
+OutputUnorderedList: takes a reference to an array. 
+
+=item *
+
+OutputOrderedList: takes a reference to an array. 
+
+=item *
+
+OutputTwoColumns: takes a reference to an array. 
+
+=item *
+
+OutputListOrColumns: Outputs either an unordered list or a two column table,
+depending on the value of the "style" attribute to the tag. Takes a reference
+to an array. 
+
+=back
+
+=head1 OPTIONS AND ARGUMENTS
+
+=over 4
+
+=item B<-i>
+
+Override the input file specified in the configuration file.
+
+=item B<-o>
+
+Override the output file specified in the configuration file.
+
+=item B<-c>
+
+Use the specified file as the configuration file, instead of DailyUpdate.cfg.
+
+=back
+
+=head1 RUNNING
+
+You can run DailyUpdate.pl from the command line, but a better
+way is to run the script as a cron job. To do this, create a .crontab file
+with something similar to the following:
+
+=over 4
+
+0 7,10,13,16,19,22 * * * /users/dwc3q/public_html/cgi-bin/DailyUpdate.pl
+
+=back
+
+You can also have cgiwrap call your startup page, but this would mean having to
+wait for the script to execute (2 to 30 seconds, depending on the staleness of
+the information). To do this, place DailyUpdate.pl and DailyUpdate.cfg in your
+public_html/cgi-bin directory, and use a URL similar to the following:
+
+=over 4
+
+http://www.cs.virginia.edu/cgi-bin/cgiwrap?user=dwc3q&script=DailyUpdate.pl
+
+=back
+
+=head1 PREREQUISITES
+
+This script requires the C<LWP::UserAgent>, C<URI>, and C<HTML::Parser>
+modules, in addition to others that are included in the standard Perl
+distribution. Download them from %CPAN%/modules/by-module/LWP/. (Go to
+http://www.perl.com/ if you don't know how to get to CPAN.)
+
+Handlers that you download may require additional modules.
+
+=head1 AUTHOR
+
+David Coppit, <coppit@cs.virginia.edu>,
+http://www.cs.virginia.edu/~dwc3q/index.thml
+
+=begin CPAN
+
+=pod COREQUISITES
+
+none
+
+=pod OSNAMES
+
+any
+
+=pod SCRIPT CATEGORIES
+
+HTML/Preprocessors
+
+=end CPAN
+
+=cut
